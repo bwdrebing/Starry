@@ -18,28 +18,86 @@ const TILINGS = [
 
 export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
-  const current = TILINGS[tilingIndex]
+  const [activeTab, setActiveTab] = useState('tiling')
+  const [thetaDeg, setThetaDeg] = useState(45)
+  const [delta, setDelta] = useState(0)
+  const [debug, setDebug] = useState(false)
 
   return (
     <div className="app">
       <StarryCanvas />
       <div className="card">
         <div className="card-canvas">
-          <AntwerpCanvas configuration={current.config} />
+          <AntwerpCanvas
+            configuration={TILINGS[tilingIndex].config}
+            mode={activeTab}
+            theta={thetaDeg * Math.PI / 180}
+            delta={delta}
+            debug={debug}
+          />
         </div>
         <div className="card-controls">
-          <label htmlFor="tiling-select">Tiling</label>
-          <select
-            id="tiling-select"
-            value={tilingIndex}
-            onChange={e => setTilingIndex(Number(e.target.value))}
-          >
-            {TILINGS.map((t, i) => (
-              <option key={t.config} value={i}>{t.label}</option>
+          <div className="tabs">
+            {['tiling', 'motif'].map(tab => (
+              <button
+                key={tab}
+                className={`tab${activeTab === tab ? ' tab--active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
             ))}
-          </select>
+          </div>
+
+          <div className="tab-controls">
+            {activeTab === 'tiling' && (
+              <div className="control-group">
+                <label htmlFor="tiling-select">Pattern</label>
+                <select
+                  id="tiling-select"
+                  value={tilingIndex}
+                  onChange={e => setTilingIndex(Number(e.target.value))}
+                >
+                  {TILINGS.map((t, i) => (
+                    <option key={t.config} value={i}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {activeTab === 'motif' && (
+              <>
+                <div className="control-group">
+                  <label htmlFor="theta-slider">Angle</label>
+                  <input
+                    id="theta-slider"
+                    type="range"
+                    min={10} max={80} step={1}
+                    value={thetaDeg}
+                    onChange={e => setThetaDeg(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{thetaDeg}°</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="delta-slider">Delta</label>
+                  <input
+                    id="delta-slider"
+                    type="range"
+                    min={0} max={0.9} step={0.01}
+                    value={delta}
+                    onChange={e => setDelta(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{delta.toFixed(2)}</span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
+      <label className="debug-toggle">
+        <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
+        debug
+      </label>
     </div>
   )
 }
