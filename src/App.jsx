@@ -23,6 +23,7 @@ export default function App() {
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
+  const [overlap, setOverlap] = useState(false)
 
   return (
     <div className="app">
@@ -36,6 +37,7 @@ export default function App() {
             delta={delta}
             debug={debug}
             thick={thick}
+            overlap={overlap}
           />
         </div>
         <div className="card-controls">
@@ -100,6 +102,17 @@ export default function App() {
                     onChange={e => setThick(e.target.checked)}
                   />
                 </div>
+                {thick && (
+                  <div className="control-group">
+                    <label htmlFor="overlap-check">Overlap</label>
+                    <input
+                      id="overlap-check"
+                      type="checkbox"
+                      checked={overlap}
+                      onChange={e => setOverlap(e.target.checked)}
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>

@@ -94,60 +94,75 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false) {
   const deltas = thick ? [delta - 0.25, delta + 0.25] : [delta]
+
   for (const shape of shapes) {
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
     const vertices = ensureClockwise(raw)
+
+    // Collect all segments across all delta passes before drawing.
+    // When overlap is on, draw all B- (under) segments first, then all A+ (over)
+    // segments on top — painter's algorithm ensures A+ always wins.
+    const underSegs = []  // B- segments, possibly shortened
+    const overSegs  = []  // A+ segments, always full
+    const debugPts  = []
+
     for (const d of deltas) {
-      drawHankinPass(ctx, vertices, theta, d, debug)
+      const n = vertices.length
+      const edges = makeEdgeRays(vertices, theta, d)
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const rayA = edges[i].left    // +theta (A+, always on top)
+        const rayB = edges[j].right   // −theta (B-, goes under)
+
+        const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
+        const pt = result?.[2]
+
+        const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
+        const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
+
+        // When overlap is on, shorten B- by a gap near the star point so A+
+        // appears to cross over it. Gap ≈ 20% of edge j's length.
+        let drawEndB = endB
+        if (overlap && pt && endB) {
+          const aj = vertices[j], bj = vertices[(j + 1) % n]
+          const edgeLenJ = Math.sqrt((bj[0] - aj[0]) ** 2 + (bj[1] - aj[1]) ** 2)
+          const gap = 0.2 * edgeLenJ
+          drawEndB = [endB[0] - rayB.dir[0] * gap, endB[1] - rayB.dir[1] * gap]
+        }
+
+        if (endA)     overSegs.push([rayA.origin, endA])
+        if (drawEndB) underSegs.push([rayB.origin, drawEndB])
+        if (debug && endA) debugPts.push(endA)
+        if (debug && endB && pt == null) debugPts.push(endB)
+      }
     }
-  }
-}
 
-function drawHankinPass(ctx, vertices, theta, delta, debug) {
-  const n = vertices.length
-  const edges = makeEdgeRays(vertices, theta, delta)
-
-  // For each adjacent pair (i, i+1), pair the +theta ray of edge i with the
-  // −theta ray of edge i+1. These converge at the star point between the two edges.
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const rayA = edges[i].left      // +theta ray of edge i
-    const rayB = edges[j].right     // −theta ray of edge i+1
-
-    const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
-    const pt = result?.[2]
-
-    const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
-    const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
-
-    if (endA) {
+    // Under pass (B-)
+    for (const [p1, p2] of underSegs) {
       ctx.beginPath()
-      ctx.moveTo(rayA.origin[0], rayA.origin[1])
-      ctx.lineTo(endA[0], endA[1])
+      ctx.moveTo(p1[0], p1[1])
+      ctx.lineTo(p2[0], p2[1])
       ctx.stroke()
     }
-    if (endB) {
+    // Over pass (A+) — drawn last so it always renders on top
+    for (const [p1, p2] of overSegs) {
       ctx.beginPath()
-      ctx.moveTo(rayB.origin[0], rayB.origin[1])
-      ctx.lineTo(endB[0], endB[1])
+      ctx.moveTo(p1[0], p1[1])
+      ctx.lineTo(p2[0], p2[1])
       ctx.stroke()
     }
-
-    if (debug && (endA || endB)) {
+    // Debug dots
+    if (debugPts.length) {
       const r = 3 / (ctx.getTransform?.().a ?? 1)
       ctx.save()
       ctx.fillStyle = 'red'
-      if (endA) {
+      for (const [x, y] of debugPts) {
         ctx.beginPath()
-        ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      if (endB && pt == null) {
-        ctx.beginPath()
-        ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
+        ctx.arc(x, y, r, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.restore()
