@@ -32,7 +32,8 @@ function centroid(vertices) {
   ]
 }
 
-function makeRays(vertices, theta) {
+// delta offsets each ray's origin along the edge from the midpoint (0 = both at midpoint)
+function makeRays(vertices, theta, delta = 0) {
   const n = vertices.length
   const c = centroid(vertices)
   const rays = []
@@ -40,28 +41,33 @@ function makeRays(vertices, theta) {
   for (let i = 0; i < n; i++) {
     const a = vertices[i]
     const b = vertices[(i + 1) % n]
-    const origin = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
     const edgeDir = norm2D(sub2D(b, a))
+    const edgeLen = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
     let normal = rotate2D(edgeDir, Math.PI / 2)
 
     // Ensure normal points inward (toward centroid)
-    if (dot2D(normal, sub2D(c, origin)) < 0) {
+    if (dot2D(normal, sub2D(c, mid)) < 0) {
       normal = [-normal[0], -normal[1]]
     }
 
-    rays.push({ origin, dir: rotate2D(normal, +theta), edge: i })
-    rays.push({ origin, dir: rotate2D(normal, -theta), edge: i })
+    const offset = delta * edgeLen * 0.5
+    const o1 = sub2D(mid, scale2D(edgeDir, offset))
+    const o2 = add2D(mid, scale2D(edgeDir, offset))
+
+    rays.push({ origin: o1, dir: rotate2D(normal, +theta), edge: i })
+    rays.push({ origin: o2, dir: rotate2D(normal, -theta), edge: i })
   }
 
   return rays
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
   for (const shape of shapes) {
     const vertices = shape[0]
     if (!vertices || vertices.length < 3) continue
 
-    const rays = makeRays(vertices, theta)
+    const rays = makeRays(vertices, theta, delta)
 
     for (const ray of rays) {
       let bestT = Infinity

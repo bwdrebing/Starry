@@ -24,12 +24,14 @@ function touchCenter(touches) {
   }
 }
 
-export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling' }) {
+export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0 }) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
   const gestureRef = useRef(null)
   const modeRef = useRef(mode)
+  const thetaRef = useRef(theta)
+  const deltaRef = useRef(delta)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -79,17 +81,19 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
       // Hankin straps
       ctx.strokeStyle = 'rgba(255,255,255,0.85)'
       ctx.lineWidth = 1.5 / scale
-      drawHankin(ctx, shapesRef.current, Math.PI / 4)
+      drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current)
     }
 
     ctx.restore()
   }, [])
 
-  // Keep modeRef in sync and redraw when mode changes
+  // Keep refs in sync and redraw when display props change
   useEffect(() => {
     modeRef.current = mode
+    thetaRef.current = theta
+    deltaRef.current = delta
     draw()
-  }, [mode, draw])
+  }, [mode, theta, delta, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
