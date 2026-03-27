@@ -18,10 +18,13 @@ const TILINGS = [
 
 export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
-  const [activeTab, setActiveTab] = useState('tiling')
   const [thetaDeg, setThetaDeg] = useState(45)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
+  const [thick, setThick] = useState(false)
+  const [bandWidth, setBandWidth] = useState(0.2)
+  const [overlap, setOverlap] = useState(false)
+  const [overlapGap, setOverlapGap] = useState(0.05)
 
   return (
     <div className="app">
@@ -30,68 +33,103 @@ export default function App() {
         <div className="card-canvas">
           <AntwerpCanvas
             configuration={TILINGS[tilingIndex].config}
-            mode={activeTab}
+            mode="motif"
             theta={thetaDeg * Math.PI / 180}
             delta={delta}
             debug={debug}
+            thick={thick}
+            bandWidth={bandWidth}
+            overlap={overlap}
+            overlapGap={overlapGap}
           />
         </div>
         <div className="card-controls">
-          <div className="tabs">
-            {['tiling', 'motif'].map(tab => (
-              <button
-                key={tab}
-                className={`tab${activeTab === tab ? ' tab--active' : ''}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+          <div className="control-group">
+            <label htmlFor="tiling-select">Pattern</label>
+            <select
+              id="tiling-select"
+              value={tilingIndex}
+              onChange={e => setTilingIndex(Number(e.target.value))}
+            >
+              {TILINGS.map((t, i) => (
+                <option key={t.config} value={i}>{t.label}</option>
+              ))}
+            </select>
           </div>
 
-          <div className="tab-controls">
-            {activeTab === 'tiling' && (
+          <div className="control-group">
+            <label htmlFor="theta-slider">Angle</label>
+            <input
+              id="theta-slider"
+              type="range"
+              min={10} max={80} step={1}
+              value={thetaDeg}
+              onChange={e => setThetaDeg(Number(e.target.value))}
+            />
+            <span className="slider-value">{thetaDeg}°</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="delta-slider">Delta</label>
+            <input
+              id="delta-slider"
+              type="range"
+              min={0} max={0.9} step={0.01}
+              value={delta}
+              onChange={e => setDelta(Number(e.target.value))}
+            />
+            <span className="slider-value">{delta.toFixed(2)}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="thick-check">Thick</label>
+            <input
+              id="thick-check"
+              type="checkbox"
+              checked={thick}
+              onChange={e => setThick(e.target.checked)}
+            />
+          </div>
+
+          {thick && (
+            <>
               <div className="control-group">
-                <label htmlFor="tiling-select">Pattern</label>
-                <select
-                  id="tiling-select"
-                  value={tilingIndex}
-                  onChange={e => setTilingIndex(Number(e.target.value))}
-                >
-                  {TILINGS.map((t, i) => (
-                    <option key={t.config} value={i}>{t.label}</option>
-                  ))}
-                </select>
+                <label htmlFor="bandwidth-slider">Width</label>
+                <input
+                  id="bandwidth-slider"
+                  type="range"
+                  min={0.01} max={0.5} step={0.01}
+                  value={bandWidth}
+                  onChange={e => setBandWidth(Number(e.target.value))}
+                />
+                <span className="slider-value">{bandWidth.toFixed(2)}</span>
               </div>
-            )}
 
-            {activeTab === 'motif' && (
-              <>
+              <div className="control-group">
+                <label htmlFor="overlap-check">Overlap</label>
+                <input
+                  id="overlap-check"
+                  type="checkbox"
+                  checked={overlap}
+                  onChange={e => setOverlap(e.target.checked)}
+                />
+              </div>
+
+              {overlap && (
                 <div className="control-group">
-                  <label htmlFor="theta-slider">Angle</label>
+                  <label htmlFor="gap-slider">Gap</label>
                   <input
-                    id="theta-slider"
+                    id="gap-slider"
                     type="range"
-                    min={10} max={80} step={1}
-                    value={thetaDeg}
-                    onChange={e => setThetaDeg(Number(e.target.value))}
+                    min={0} max={0.3} step={0.005}
+                    value={overlapGap}
+                    onChange={e => setOverlapGap(Number(e.target.value))}
                   />
-                  <span className="slider-value">{thetaDeg}°</span>
+                  <span className="slider-value">{overlapGap.toFixed(3)}</span>
                 </div>
-                <div className="control-group">
-                  <label htmlFor="delta-slider">Delta</label>
-                  <input
-                    id="delta-slider"
-                    type="range"
-                    min={0} max={0.9} step={0.01}
-                    value={delta}
-                    onChange={e => setDelta(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{delta.toFixed(2)}</span>
-                </div>
-              </>
-            )}
-          </div>
+              )}
+            </>
+          )}
         </div>
       </div>
       <label className="debug-toggle">

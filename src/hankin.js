@@ -94,59 +94,127 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false) {
+// Returns the t parameter (along segment a→b) where line a→b crosses segment c→d.
+// t is NOT clamped — it can be < 0 or > 1. Returns null if c→d is not crossed
+// within its own extent [0,1] (with a small tolerance).
+function bandCrossParam(a, b, c, d) {
+  const dab = [b[0] - a[0], b[1] - a[1]]
+  const dcd = [d[0] - c[0], d[1] - c[1]]
+  const denom = cross2D(dab, dcd)
+  if (Math.abs(denom) < 1e-10) return null
+  const diff = sub2D(c, a)
+  const t = cross2D(diff, dcd) / denom
+  const s = cross2D(diff, dab) / denom
+  if (s < -1e-4 || s > 1 + 1e-4) return null   // crossing is outside B+'s segment extent
+  return t                                        // t may be outside [0,1] — caller clamps
+}
+
+// Pushes sub-segments of origin→end into segs, with the band gap [tGapStart, tGapEnd]
+// removed. extraGap (in world units) adds margin on each side.
+function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
+  const len = Math.sqrt((end[0] - origin[0]) ** 2 + (end[1] - origin[1]) ** 2)
+  const extra = len > 1e-8 ? extraGap / len : 0
+  const t0 = tGapStart - extra
+  const t1 = tGapEnd   + extra
+  const lerp = t => [origin[0] + t * (end[0] - origin[0]), origin[1] + t * (end[1] - origin[1])]
+  const fwd  = (a, b) => (b[0] - a[0]) * dir[0] + (b[1] - a[1]) * dir[1] > 1e-6
+
+  const gapStart = lerp(t0)
+  const gapEnd   = lerp(t1)
+  if (fwd(origin, gapStart)) segs.push([origin, gapStart])
+  if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
+}
+
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2) {
+  // halfThickDelta scales with 1/cos(theta) so the visual band width
+  // (= halfThickDelta * edgeLen * cos(theta)) stays constant at bandWidth * edgeLen.
+  const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(theta)) : 0
+  const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
+
   for (const shape of shapes) {
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
-
     const vertices = ensureClockwise(raw)
-
     const n = vertices.length
-    const edges = makeEdgeRays(vertices, theta, delta)
 
-    // For each adjacent pair (i, i+1), pair the +theta ray of edge i with the
-    // −theta ray of edge i+1. These are the two rays that converge toward the
-    // star point between those two edges.
+    // Precompute edge rays and star-point endpoints for each delta pass.
+    // sp[di][i] = { endA, endB } for pair (i, i+1) at delta index di.
+    const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, theta, d))
+    const sp = allEdgeRays.map(edges =>
+      Array.from({ length: n }, (_, i) => {
+        const j = (i + 1) % n
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        return {
+          endA: pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
+          endB: pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
+        }
+      })
+    )
+
+    const underSegs = [], overSegs = [], debugPts = []
+
     for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n
-      const rayA = edges[i].left      // +theta ray of edge i
-      const rayB = edges[j].right     // −theta ray of edge i+1
+      const prev = (i - 1 + n) % n
+      const va = vertices[i], vb = vertices[(i + 1) % n]
+      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
 
-      const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
-      const pt = result?.[2]
+      // B+ segments: left ray of edge i (one per delta pass), end = star point for pair (i, i+1)
+      const bplus = allEdgeRays.map((edges, di) => {
+        const ray = edges[i].left
+        const end = sp[di][i].endA
+        return end ? { origin: ray.origin, dir: ray.dir, end } : null
+      }).filter(Boolean)
 
-      const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
-      const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
+      // B- segments: right ray of edge i (one per delta pass), end = star point for pair (prev, i)
+      const bminus = allEdgeRays.map((edges, di) => {
+        const ray = edges[i].right
+        const end = sp[di][prev].endB
+        return end ? { origin: ray.origin, dir: ray.dir, end } : null
+      }).filter(Boolean)
 
-      if (endA) {
-        ctx.beginPath()
-        ctx.moveTo(rayA.origin[0], rayA.origin[1])
-        ctx.lineTo(endA[0], endA[1])
-        ctx.stroke()
-      }
-      if (endB) {
-        ctx.beginPath()
-        ctx.moveTo(rayB.origin[0], rayB.origin[1])
-        ctx.lineTo(endB[0], endB[1])
-        ctx.stroke()
-      }
+      // B+ is always on top
+      for (const seg of bplus) overSegs.push([seg.origin, seg.end])
 
-      if (debug && (endA || endB)) {
-        const r = 3 / (ctx.getTransform?.().a ?? 1)
-        ctx.save()
-        ctx.fillStyle = 'red'
-        if (endA) {
-          ctx.beginPath()
-          ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
-          ctx.fill()
+      const extraGap = overlapGap * edgeLen
+
+      for (const bm of bminus) {
+        if (overlap && thick) {
+          // Find where B- crosses each B+ line. t is unclamped so crossings
+          // before the origin (e.g. at delta=0, shared-origin case) are found,
+          // then clamped to [0,1] so the gap always covers the full B+ band width.
+          const ts = bplus
+            .map(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
+            .filter(t => t !== null)
+            .map(t => Math.max(0, Math.min(1, t)))
+            .sort((a, b) => a - b)
+          if (ts.length >= 2) {
+            pushWithBandGap(underSegs, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
+          } else {
+            underSegs.push([bm.origin, bm.end])
+          }
+        } else {
+          underSegs.push([bm.origin, bm.end])
         }
-        if (endB && pt == null) {
-          ctx.beginPath()
-          ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        ctx.restore()
       }
+
+      if (debug) {
+        for (let di = 0; di < deltas.length; di++)
+          if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
+      }
+    }
+
+    for (const [p1, p2] of underSegs) {
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
+    }
+    for (const [p1, p2] of overSegs) {
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
+    }
+    if (debugPts.length) {
+      const r = 3 / (ctx.getTransform?.().a ?? 1)
+      ctx.save(); ctx.fillStyle = 'red'
+      for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
+      ctx.restore()
     }
   }
 }
