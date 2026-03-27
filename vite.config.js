@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/Starry/',
+  base: process.env.VITE_BASE ?? '/Starry/',
 })
