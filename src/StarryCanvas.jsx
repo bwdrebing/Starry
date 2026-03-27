@@ -144,23 +144,13 @@ export default function StarryCanvas() {
   }, [])
 
   return (
-    <>
-      <canvas ref={canvasRef} style={{ display: 'block' }} />
-      <div style={{
-        position: 'fixed',
-        bottom: '2rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        color: 'rgba(255,255,255,0.4)',
-        fontSize: '1rem',
-        letterSpacing: '0.4em',
-        textTransform: 'uppercase',
-        fontFamily: 'Georgia, serif',
-        pointerEvents: 'none',
-        userSelect: 'none',
-      }}>
-        Starry
-      </div>
-    </>
+    <canvas ref={canvasRef} style={{
+      position: 'fixed',
+      inset: 0,
+      display: 'block',
+      width: '100%',
+      height: '100%',
+      zIndex: 0,
+    }} />
   )
 }
