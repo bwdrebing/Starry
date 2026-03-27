@@ -78,7 +78,25 @@ function makeRays(vertices, theta, delta = 0) {
   return rays
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
+// Returns the point where a ray (origin + t*dir, t > 0) exits a convex polygon,
+// i.e. the first edge crossing with t > 0 and edge parameter u in [0,1].
+function rayExitPolygon(origin, dir, vertices) {
+  const n = vertices.length
+  let minT = Infinity
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % n]
+    const ex = b[0] - a[0], ey = b[1] - a[1]
+    const denom = dir[0] * ey - dir[1] * ex
+    if (Math.abs(denom) < 1e-10) continue
+    const dx = a[0] - origin[0], dy = a[1] - origin[1]
+    const t = (dx * ey - dy * ex) / denom
+    const u = (dx * dir[1] - dy * dir[0]) / denom
+    if (t > 1e-4 && u >= -1e-6 && u <= 1 + 1e-6) minT = Math.min(minT, t)
+  }
+  return minT < Infinity ? [origin[0] + dir[0] * minT, origin[1] + dir[1] * minT] : null
+}
+
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false) {
   for (const shape of shapes) {
     const vertices = shape[0]
     if (!vertices || vertices.length < 3) continue
@@ -88,8 +106,6 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
     for (const ray of rays) {
       let bestT = Infinity
       let bestPt = null
-      let parallelPt = null
-      let parallelDot = 0.99 // only consider rays within ~8° of parallel
 
       for (const other of rays) {
         if (other.edge === ray.edge) continue
@@ -99,23 +115,25 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
           const [t, pt] = result
           if (t < bestT && insideConvexPolygon(pt, vertices)) { bestT = t; bestPt = pt }
         }
-
-        // Track the most nearly-parallel ray from another edge as a fallback.
-        // When rays are parallel they never intersect, so we meet at the midpoint
-        // between the two origins instead.
-        const d = dot2D(ray.dir, other.dir)
-        if (d > parallelDot) {
-          const mid = [(ray.origin[0] + other.origin[0]) / 2, (ray.origin[1] + other.origin[1]) / 2]
-          if (insideConvexPolygon(mid, vertices)) { parallelDot = d; parallelPt = mid }
-        }
       }
 
-      const endpoint = bestPt ?? parallelPt
+      // If no inside-polygon intersection, clip the ray to the polygon boundary.
+      const endpoint = bestPt ?? rayExitPolygon(ray.origin, ray.dir, vertices)
       if (endpoint) {
         ctx.beginPath()
         ctx.moveTo(ray.origin[0], ray.origin[1])
         ctx.lineTo(endpoint[0], endpoint[1])
         ctx.stroke()
+
+        if (debug) {
+          const r = 3 / (ctx.getTransform?.().a ?? 1)
+          ctx.save()
+          ctx.fillStyle = 'red'
+          ctx.beginPath()
+          ctx.arc(endpoint[0], endpoint[1], r, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.restore()
+        }
       }
     }
   }

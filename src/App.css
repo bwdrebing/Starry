@@ -140,3 +140,18 @@
   text-align: right;
   white-space: nowrap;
 }
+
+.debug-toggle {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.7rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  user-select: none;
+}

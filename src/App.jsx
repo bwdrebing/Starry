@@ -21,6 +21,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('tiling')
   const [thetaDeg, setThetaDeg] = useState(45)
   const [delta, setDelta] = useState(0)
+  const [debug, setDebug] = useState(false)
 
   return (
     <div className="app">
@@ -32,6 +33,7 @@ export default function App() {
             mode={activeTab}
             theta={thetaDeg * Math.PI / 180}
             delta={delta}
+            debug={debug}
           />
         </div>
         <div className="card-controls">
@@ -92,6 +94,10 @@ export default function App() {
           </div>
         </div>
       </div>
+      <label className="debug-toggle">
+        <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
+        debug
+      </label>
     </div>
   )
 }
