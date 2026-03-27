@@ -88,20 +88,33 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
     for (const ray of rays) {
       let bestT = Infinity
       let bestPt = null
+      let parallelPt = null
+      let parallelDot = 0.99 // only consider rays within ~8° of parallel
 
       for (const other of rays) {
         if (other.edge === ray.edge) continue
+
         const result = rayIntersect(ray.origin, ray.dir, other.origin, other.dir)
         if (result) {
           const [t, pt] = result
           if (t < bestT && insideConvexPolygon(pt, vertices)) { bestT = t; bestPt = pt }
         }
+
+        // Track the most nearly-parallel ray from another edge as a fallback.
+        // When rays are parallel they never intersect, so we meet at the midpoint
+        // between the two origins instead.
+        const d = dot2D(ray.dir, other.dir)
+        if (d > parallelDot) {
+          const mid = [(ray.origin[0] + other.origin[0]) / 2, (ray.origin[1] + other.origin[1]) / 2]
+          if (insideConvexPolygon(mid, vertices)) { parallelDot = d; parallelPt = mid }
+        }
       }
 
-      if (bestPt) {
+      const endpoint = bestPt ?? parallelPt
+      if (endpoint) {
         ctx.beginPath()
         ctx.moveTo(ray.origin[0], ray.origin[1])
-        ctx.lineTo(bestPt[0], bestPt[1])
+        ctx.lineTo(endpoint[0], endpoint[1])
         ctx.stroke()
       }
     }
