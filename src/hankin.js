@@ -94,9 +94,10 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-// Returns t ∈ [0,1) where segment a→b is crossed by segment c→d, or null.
-// t=0 is included so shared-origin crossings (delta=0 case) are detected.
-function segmentCrossParam(a, b, c, d) {
+// Returns the t parameter (along segment a→b) where line a→b crosses segment c→d.
+// t is NOT clamped — it can be < 0 or > 1. Returns null if c→d is not crossed
+// within its own extent [0,1] (with a small tolerance).
+function bandCrossParam(a, b, c, d) {
   const dab = [b[0] - a[0], b[1] - a[1]]
   const dcd = [d[0] - c[0], d[1] - c[1]]
   const denom = cross2D(dab, dcd)
@@ -104,25 +105,24 @@ function segmentCrossParam(a, b, c, d) {
   const diff = sub2D(c, a)
   const t = cross2D(diff, dcd) / denom
   const s = cross2D(diff, dab) / denom
-  if (t < 0 || t > 1 - 1e-4 || s < 0 || s > 1) return null
-  return t
+  if (s < -1e-4 || s > 1 + 1e-4) return null   // crossing is outside B+'s segment extent
+  return t                                        // t may be outside [0,1] — caller clamps
 }
 
-// Pushes sub-segments of origin→end into segs, with gaps cut at each crossing t value.
-function pushWithGaps(segs, origin, end, dir, crossings, halfGap) {
-  let prevPt = origin
-  for (const t of crossings) {
-    const cx = origin[0] + t * (end[0] - origin[0])
-    const cy = origin[1] + t * (end[1] - origin[1])
-    const before = [cx - dir[0] * halfGap, cy - dir[1] * halfGap]
-    const after  = [cx + dir[0] * halfGap, cy + dir[1] * halfGap]
-    // only push if the sub-segment goes forward
-    if ((before[0] - prevPt[0]) * dir[0] + (before[1] - prevPt[1]) * dir[1] > 1e-6)
-      segs.push([prevPt, before])
-    prevPt = after
-  }
-  if ((end[0] - prevPt[0]) * dir[0] + (end[1] - prevPt[1]) * dir[1] > 1e-6)
-    segs.push([prevPt, end])
+// Pushes sub-segments of origin→end into segs, with the band gap [tGapStart, tGapEnd]
+// removed. extraGap (in world units) adds margin on each side.
+function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
+  const len = Math.sqrt((end[0] - origin[0]) ** 2 + (end[1] - origin[1]) ** 2)
+  const extra = len > 1e-8 ? extraGap / len : 0
+  const t0 = tGapStart - extra
+  const t1 = tGapEnd   + extra
+  const lerp = t => [origin[0] + t * (end[0] - origin[0]), origin[1] + t * (end[1] - origin[1])]
+  const fwd  = (a, b) => (b[0] - a[0]) * dir[0] + (b[1] - a[1]) * dir[1] > 1e-6
+
+  const gapStart = lerp(t0)
+  const gapEnd   = lerp(t1)
+  if (fwd(origin, gapStart)) segs.push([origin, gapStart])
+  if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05) {
@@ -173,16 +173,23 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       // B+ is always on top
       for (const seg of bplus) overSegs.push([seg.origin, seg.end])
 
-      // Gap half-width: user-configurable fraction of edge length
-      const halfGap = overlapGap * edgeLen
+      const extraGap = overlapGap * edgeLen
 
       for (const bm of bminus) {
         if (overlap && thick) {
-          const crossings = bplus
-            .map(bp => segmentCrossParam(bm.origin, bm.end, bp.origin, bp.end))
+          // Find where B- crosses each B+ line. t is unclamped so crossings
+          // before the origin (e.g. at delta=0, shared-origin case) are found,
+          // then clamped to [0,1] so the gap always covers the full B+ band width.
+          const ts = bplus
+            .map(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
             .filter(t => t !== null)
+            .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
-          pushWithGaps(underSegs, bm.origin, bm.end, bm.dir, crossings, halfGap)
+          if (ts.length >= 2) {
+            pushWithBandGap(underSegs, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
+          } else {
+            underSegs.push([bm.origin, bm.end])
+          }
         } else {
           underSegs.push([bm.origin, bm.end])
         }
