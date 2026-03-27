@@ -1,6 +1,7 @@
-// Hankin "Polygons in Contact" algorithm
-// For each polygon edge, two rays are cast inward at ±θ from the edge's inward normal.
-// Each ray is drawn from the edge midpoint to its closest intersection with another ray.
+// Hankin "Polygons in Contact" algorithm.
+// Each polygon edge generates two rays angled inward at ±θ from the inward normal.
+// The right ray of edge i pairs *only* with the left ray of adjacent edge i+1.
+// These converge at a star point; both are drawn from their origin to that point.
 
 function rotate2D([x, y], a) {
   const c = Math.cos(a), s = Math.sin(a)
@@ -13,73 +14,27 @@ function norm2D([x, y]) { const l = Math.sqrt(x * x + y * y); return l ? [x / l,
 function dot2D([ax, ay], [bx, by]) { return ax * bx + ay * by }
 function cross2D([ax, ay], [bx, by]) { return ax * by - ay * bx }
 
-// Returns [t, point] for the intersection of ray (o1+t*d1) and (o2+s*d2), or null.
+function centroid(vertices) {
+  const n = vertices.length
+  return [
+    vertices.reduce((s, v) => s + v[0], 0) / n,
+    vertices.reduce((s, v) => s + v[1], 0) / n,
+  ]
+}
+
+// Returns [t, s, point] for the intersection of ray (o1+t*d1) and (o2+s*d2), or null.
+// Both t and s must be positive (rays go forward).
 function rayIntersect(o1, d1, o2, d2) {
   const denom = cross2D(d1, d2)
   if (Math.abs(denom) < 1e-10) return null
   const diff = sub2D(o2, o1)
   const t = cross2D(diff, d2) / denom
   const s = cross2D(diff, d1) / denom
-  if (t < 1e-6 || s < -1e-6) return null
-  return [t, add2D(o1, scale2D(d1, t))]
+  if (t < 1e-6 || s < 1e-6) return null
+  return [t, s, add2D(o1, scale2D(d1, t))]
 }
 
-// Returns true if pt is inside (or on the boundary of) a convex polygon.
-// Works regardless of winding order.
-function insideConvexPolygon(pt, vertices) {
-  const n = vertices.length
-  let pos = 0, neg = 0
-  for (let i = 0; i < n; i++) {
-    const a = vertices[i]
-    const b = vertices[(i + 1) % n]
-    const cross = (b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0])
-    if (cross > 1e-4) pos++
-    else if (cross < -1e-4) neg++
-    if (pos > 0 && neg > 0) return false
-  }
-  return true
-}
-
-function centroid(vertices) {
-  const n = vertices.length
-  return [
-    vertices.reduce((sum, v) => sum + v[0], 0) / n,
-    vertices.reduce((sum, v) => sum + v[1], 0) / n,
-  ]
-}
-
-// delta offsets each ray's origin along the edge from the midpoint (0 = both at midpoint)
-function makeRays(vertices, theta, delta = 0) {
-  const n = vertices.length
-  const c = centroid(vertices)
-  const rays = []
-
-  for (let i = 0; i < n; i++) {
-    const a = vertices[i]
-    const b = vertices[(i + 1) % n]
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    const edgeDir = norm2D(sub2D(b, a))
-    const edgeLen = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
-    let normal = rotate2D(edgeDir, Math.PI / 2)
-
-    // Ensure normal points inward (toward centroid)
-    if (dot2D(normal, sub2D(c, mid)) < 0) {
-      normal = [-normal[0], -normal[1]]
-    }
-
-    const offset = delta * edgeLen * 0.5
-    const o1 = sub2D(mid, scale2D(edgeDir, offset))
-    const o2 = add2D(mid, scale2D(edgeDir, offset))
-
-    rays.push({ origin: o1, dir: rotate2D(normal, +theta), edge: i })
-    rays.push({ origin: o2, dir: rotate2D(normal, -theta), edge: i })
-  }
-
-  return rays
-}
-
-// Returns the point where a ray (origin + t*dir, t > 0) exits a convex polygon,
-// i.e. the first edge crossing with t > 0 and edge parameter u in [0,1].
+// Returns the point where a ray (origin + t*dir, t > 0) first exits the polygon.
 function rayExitPolygon(origin, dir, vertices) {
   const n = vertices.length
   let minT = Infinity
@@ -96,44 +51,85 @@ function rayExitPolygon(origin, dir, vertices) {
   return minT < Infinity ? [origin[0] + dir[0] * minT, origin[1] + dir[1] * minT] : null
 }
 
+// Builds per-edge ray pairs. For edge i:
+//   left ray  — origin offset toward edge i-1's corner, direction = rotate(normal, +theta)
+//   right ray — origin offset toward edge i+1's corner, direction = rotate(normal, -theta)
+function makeEdgeRays(vertices, theta, delta) {
+  const n = vertices.length
+  const c = centroid(vertices)
+  const edges = []
+
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % n]
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    const edgeDir = norm2D(sub2D(b, a))
+    const edgeLen = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+    let normal = rotate2D(edgeDir, Math.PI / 2)
+    if (dot2D(normal, sub2D(c, mid)) < 0) normal = [-normal[0], -normal[1]]
+
+    const offset = delta * edgeLen * 0.5
+    // oLeft is offset toward vertex[i] (shared corner with edge i-1)
+    // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
+    const oLeft = sub2D(mid, scale2D(edgeDir, offset))
+    const oRight = add2D(mid, scale2D(edgeDir, offset))
+
+    edges.push({
+      left:  { origin: oLeft,  dir: rotate2D(normal, +theta) },
+      right: { origin: oRight, dir: rotate2D(normal, -theta) },
+    })
+  }
+  return edges
+}
+
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false) {
   for (const shape of shapes) {
     const vertices = shape[0]
     if (!vertices || vertices.length < 3) continue
 
-    const rays = makeRays(vertices, theta, delta)
+    const n = vertices.length
+    const edges = makeEdgeRays(vertices, theta, delta)
 
-    for (const ray of rays) {
-      let bestT = Infinity
-      let bestPt = null
+    for (let i = 0; i < n; i++) {
+      // Pair the right ray of edge i with the left ray of edge i+1.
+      // Both rays originate near the shared corner and should converge inward.
+      const rayA = edges[i].right
+      const rayB = edges[(i + 1) % n].left
 
-      for (const other of rays) {
-        if (other.edge === ray.edge) continue
+      const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
+      const pt = result?.[2]
 
-        const result = rayIntersect(ray.origin, ray.dir, other.origin, other.dir)
-        if (result) {
-          const [t, pt] = result
-          if (t < bestT && insideConvexPolygon(pt, vertices)) { bestT = t; bestPt = pt }
-        }
+      // Fall back to polygon-boundary clip if rays are parallel or diverge.
+      const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
+      const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
+
+      if (endA) {
+        ctx.beginPath()
+        ctx.moveTo(rayA.origin[0], rayA.origin[1])
+        ctx.lineTo(endA[0], endA[1])
+        ctx.stroke()
+      }
+      if (endB) {
+        ctx.beginPath()
+        ctx.moveTo(rayB.origin[0], rayB.origin[1])
+        ctx.lineTo(endB[0], endB[1])
+        ctx.stroke()
       }
 
-      // If no inside-polygon intersection, clip the ray to the polygon boundary.
-      const endpoint = bestPt ?? rayExitPolygon(ray.origin, ray.dir, vertices)
-      if (endpoint) {
-        ctx.beginPath()
-        ctx.moveTo(ray.origin[0], ray.origin[1])
-        ctx.lineTo(endpoint[0], endpoint[1])
-        ctx.stroke()
-
-        if (debug) {
-          const r = 3 / (ctx.getTransform?.().a ?? 1)
-          ctx.save()
-          ctx.fillStyle = 'red'
+      if (debug) {
+        const r = 3 / (ctx.getTransform?.().a ?? 1)
+        ctx.save()
+        ctx.fillStyle = 'red'
+        if (endA) {
           ctx.beginPath()
-          ctx.arc(endpoint[0], endpoint[1], r, 0, Math.PI * 2)
+          ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
           ctx.fill()
-          ctx.restore()
         }
+        if (endB && (!pt || endB[0] !== endA[0] || endB[1] !== endA[1])) {
+          ctx.beginPath()
+          ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.restore()
       }
     }
   }
