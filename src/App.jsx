@@ -52,6 +52,7 @@ const TILINGS = [
 
 export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
+  const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
@@ -75,6 +76,7 @@ export default function App() {
             bandWidth={bandWidth}
             overlap={overlap}
             overlapGap={overlapGap}
+            showMotif={showMotif}
           />
         </div>
         <div className="card-controls">
@@ -89,6 +91,16 @@ export default function App() {
                 <option key={t.config} value={i}>{t.label}</option>
               ))}
             </select>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="motif-check">Motif</label>
+            <input
+              id="motif-check"
+              type="checkbox"
+              checked={showMotif}
+              onChange={e => setShowMotif(e.target.checked)}
+            />
           </div>
 
           <div className="control-group">

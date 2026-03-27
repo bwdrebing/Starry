@@ -24,7 +24,7 @@ function touchCenter(touches) {
   }
 }
 
-export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2 }) {
+export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true }) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
@@ -37,6 +37,7 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
   const overlapRef = useRef(overlap)
   const overlapGapRef = useRef(overlapGap)
   const bandWidthRef = useRef(bandWidth)
+  const showMotifRef = useRef(showMotif)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -84,9 +85,11 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
       }
 
       // Hankin straps
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)'
-      ctx.lineWidth = 1.5 / scale
-      drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current)
+      if (showMotifRef.current) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = 1.5 / scale
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current)
+      }
     }
 
     ctx.restore()
@@ -102,8 +105,9 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
     overlapRef.current = overlap
     overlapGapRef.current = overlapGap
     bandWidthRef.current = bandWidth
+    showMotifRef.current = showMotif
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
