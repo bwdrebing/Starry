@@ -94,6 +94,36 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
+// Returns t ∈ (0,1) where segment a→b is crossed by segment c→d, or null.
+function segmentCrossParam(a, b, c, d) {
+  const dab = [b[0] - a[0], b[1] - a[1]]
+  const dcd = [d[0] - c[0], d[1] - c[1]]
+  const denom = cross2D(dab, dcd)
+  if (Math.abs(denom) < 1e-10) return null
+  const diff = sub2D(c, a)
+  const t = cross2D(diff, dcd) / denom
+  const s = cross2D(diff, dab) / denom
+  if (t < 1e-4 || t > 1 - 1e-4 || s < 0 || s > 1) return null
+  return t
+}
+
+// Pushes sub-segments of origin→end into segs, with gaps cut at each crossing t value.
+function pushWithGaps(segs, origin, end, dir, crossings, halfGap) {
+  let prevPt = origin
+  for (const t of crossings) {
+    const cx = origin[0] + t * (end[0] - origin[0])
+    const cy = origin[1] + t * (end[1] - origin[1])
+    const before = [cx - dir[0] * halfGap, cy - dir[1] * halfGap]
+    const after  = [cx + dir[0] * halfGap, cy + dir[1] * halfGap]
+    // only push if the sub-segment goes forward
+    if ((before[0] - prevPt[0]) * dir[0] + (before[1] - prevPt[1]) * dir[1] > 1e-6)
+      segs.push([prevPt, before])
+    prevPt = after
+  }
+  if ((end[0] - prevPt[0]) * dir[0] + (end[1] - prevPt[1]) * dir[1] > 1e-6)
+    segs.push([prevPt, end])
+}
+
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false) {
   const deltas = thick ? [delta - 0.25, delta + 0.25] : [delta]
 
@@ -101,70 +131,79 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
     const vertices = ensureClockwise(raw)
+    const n = vertices.length
 
-    // Collect all segments across all delta passes before drawing.
-    // When overlap is on, draw all B- (under) segments first, then all A+ (over)
-    // segments on top — painter's algorithm ensures A+ always wins.
-    const underSegs = []  // B- segments, possibly shortened
-    const overSegs  = []  // A+ segments, always full
-    const debugPts  = []
-
-    for (const d of deltas) {
-      const n = vertices.length
-      const edges = makeEdgeRays(vertices, theta, d)
-
-      for (let i = 0; i < n; i++) {
+    // Precompute edge rays and star-point endpoints for each delta pass.
+    // sp[di][i] = { endA, endB } for pair (i, i+1) at delta index di.
+    const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, theta, d))
+    const sp = allEdgeRays.map(edges =>
+      Array.from({ length: n }, (_, i) => {
         const j = (i + 1) % n
-        const rayA = edges[i].left    // +theta (A+, always on top)
-        const rayB = edges[j].right   // −theta (B-, goes under)
-
-        const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
-        const pt = result?.[2]
-
-        const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
-        const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
-
-        // When overlap is on, shorten B- by a gap near the star point so A+
-        // appears to cross over it. Gap ≈ 20% of edge j's length.
-        let drawEndB = endB
-        if (overlap && pt && endB) {
-          const aj = vertices[j], bj = vertices[(j + 1) % n]
-          const edgeLenJ = Math.sqrt((bj[0] - aj[0]) ** 2 + (bj[1] - aj[1]) ** 2)
-          const gap = 0.2 * edgeLenJ
-          drawEndB = [endB[0] - rayB.dir[0] * gap, endB[1] - rayB.dir[1] * gap]
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        return {
+          endA: pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
+          endB: pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
         }
+      })
+    )
 
-        if (endA)     overSegs.push([rayA.origin, endA])
-        if (drawEndB) underSegs.push([rayB.origin, drawEndB])
-        if (debug && endA) debugPts.push(endA)
-        if (debug && endB && pt == null) debugPts.push(endB)
+    const underSegs = [], overSegs = [], debugPts = []
+
+    for (let i = 0; i < n; i++) {
+      const prev = (i - 1 + n) % n
+      const va = vertices[i], vb = vertices[(i + 1) % n]
+      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
+
+      // B+ segments: left ray of edge i (one per delta pass), end = star point for pair (i, i+1)
+      const bplus = allEdgeRays.map((edges, di) => {
+        const ray = edges[i].left
+        const end = sp[di][i].endA
+        return end ? { origin: ray.origin, dir: ray.dir, end } : null
+      }).filter(Boolean)
+
+      // B- segments: right ray of edge i (one per delta pass), end = star point for pair (prev, i)
+      const bminus = allEdgeRays.map((edges, di) => {
+        const ray = edges[i].right
+        const end = sp[di][prev].endB
+        return end ? { origin: ray.origin, dir: ray.dir, end } : null
+      }).filter(Boolean)
+
+      // B+ is always on top
+      for (const seg of bplus) overSegs.push([seg.origin, seg.end])
+
+      // For B-, find where each B+ line crosses it and apply Celtic-knot gaps
+      // Gap half-width derived from B+ strap width projected onto B- direction.
+      const halfGap = 0.0625 * edgeLen / Math.sin(theta)
+
+      for (const bm of bminus) {
+        if (overlap && thick) {
+          const crossings = bplus
+            .map(bp => segmentCrossParam(bm.origin, bm.end, bp.origin, bp.end))
+            .filter(t => t !== null)
+            .sort((a, b) => a - b)
+          pushWithGaps(underSegs, bm.origin, bm.end, bm.dir, crossings, halfGap)
+        } else {
+          underSegs.push([bm.origin, bm.end])
+        }
+      }
+
+      if (debug) {
+        for (let di = 0; di < deltas.length; di++)
+          if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
       }
     }
 
-    // Under pass (B-)
     for (const [p1, p2] of underSegs) {
-      ctx.beginPath()
-      ctx.moveTo(p1[0], p1[1])
-      ctx.lineTo(p2[0], p2[1])
-      ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
     }
-    // Over pass (A+) — drawn last so it always renders on top
     for (const [p1, p2] of overSegs) {
-      ctx.beginPath()
-      ctx.moveTo(p1[0], p1[1])
-      ctx.lineTo(p2[0], p2[1])
-      ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
     }
-    // Debug dots
     if (debugPts.length) {
       const r = 3 / (ctx.getTransform?.().a ?? 1)
-      ctx.save()
-      ctx.fillStyle = 'red'
-      for (const [x, y] of debugPts) {
-        ctx.beginPath()
-        ctx.arc(x, y, r, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      ctx.save(); ctx.fillStyle = 'red'
+      for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
       ctx.restore()
     }
   }
