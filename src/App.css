@@ -41,45 +41,6 @@
   background: rgba(0, 0, 15, 0.5);
 }
 
-/* Tabs */
-.tabs {
-  display: flex;
-  gap: 2px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 3px;
-  flex-shrink: 0;
-}
-
-.tab {
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.8rem;
-  font-family: Georgia, serif;
-  letter-spacing: 0.06em;
-  padding: 0.3rem 0.85rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  white-space: nowrap;
-}
-
-.tab:hover { color: rgba(255, 255, 255, 0.75); }
-
-.tab--active {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-/* Tab-specific controls area */
-.tab-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
-}
-
 /* Shared control group (label + input + optional value) */
 .control-group {
   display: flex;
