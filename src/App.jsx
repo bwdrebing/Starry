@@ -22,6 +22,7 @@ export default function App() {
   const [thetaDeg, setThetaDeg] = useState(45)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
+  const [thick, setThick] = useState(false)
 
   return (
     <div className="app">
@@ -34,6 +35,7 @@ export default function App() {
             theta={thetaDeg * Math.PI / 180}
             delta={delta}
             debug={debug}
+            thick={thick}
           />
         </div>
         <div className="card-controls">
@@ -88,6 +90,15 @@ export default function App() {
                     onChange={e => setDelta(Number(e.target.value))}
                   />
                   <span className="slider-value">{delta.toFixed(2)}</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="thick-check">Thick</label>
+                  <input
+                    id="thick-check"
+                    type="checkbox"
+                    checked={thick}
+                    onChange={e => setThick(e.target.checked)}
+                  />
                 </div>
               </>
             )}

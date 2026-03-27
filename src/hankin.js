@@ -94,59 +94,63 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false) {
+  const deltas = thick ? [delta - 0.25, delta + 0.25] : [delta]
   for (const shape of shapes) {
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
-
     const vertices = ensureClockwise(raw)
+    for (const d of deltas) {
+      drawHankinPass(ctx, vertices, theta, d, debug)
+    }
+  }
+}
 
-    const n = vertices.length
-    const edges = makeEdgeRays(vertices, theta, delta)
+function drawHankinPass(ctx, vertices, theta, delta, debug) {
+  const n = vertices.length
+  const edges = makeEdgeRays(vertices, theta, delta)
 
-    // For each adjacent pair (i, i+1), pair the +theta ray of edge i with the
-    // −theta ray of edge i+1. These are the two rays that converge toward the
-    // star point between those two edges.
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n
-      const rayA = edges[i].left      // +theta ray of edge i
-      const rayB = edges[j].right     // −theta ray of edge i+1
+  // For each adjacent pair (i, i+1), pair the +theta ray of edge i with the
+  // −theta ray of edge i+1. These converge at the star point between the two edges.
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    const rayA = edges[i].left      // +theta ray of edge i
+    const rayB = edges[j].right     // −theta ray of edge i+1
 
-      const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
-      const pt = result?.[2]
+    const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
+    const pt = result?.[2]
 
-      const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
-      const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
+    const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
+    const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
 
+    if (endA) {
+      ctx.beginPath()
+      ctx.moveTo(rayA.origin[0], rayA.origin[1])
+      ctx.lineTo(endA[0], endA[1])
+      ctx.stroke()
+    }
+    if (endB) {
+      ctx.beginPath()
+      ctx.moveTo(rayB.origin[0], rayB.origin[1])
+      ctx.lineTo(endB[0], endB[1])
+      ctx.stroke()
+    }
+
+    if (debug && (endA || endB)) {
+      const r = 3 / (ctx.getTransform?.().a ?? 1)
+      ctx.save()
+      ctx.fillStyle = 'red'
       if (endA) {
         ctx.beginPath()
-        ctx.moveTo(rayA.origin[0], rayA.origin[1])
-        ctx.lineTo(endA[0], endA[1])
-        ctx.stroke()
+        ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
+        ctx.fill()
       }
-      if (endB) {
+      if (endB && pt == null) {
         ctx.beginPath()
-        ctx.moveTo(rayB.origin[0], rayB.origin[1])
-        ctx.lineTo(endB[0], endB[1])
-        ctx.stroke()
+        ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
+        ctx.fill()
       }
-
-      if (debug && (endA || endB)) {
-        const r = 3 / (ctx.getTransform?.().a ?? 1)
-        ctx.save()
-        ctx.fillStyle = 'red'
-        if (endA) {
-          ctx.beginPath()
-          ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        if (endB && pt == null) {
-          ctx.beginPath()
-          ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        ctx.restore()
-      }
+      ctx.restore()
     }
   }
 }
