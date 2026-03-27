@@ -23,6 +23,7 @@ export default function App() {
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
+  const [bandWidth, setBandWidth] = useState(0.2)
   const [overlap, setOverlap] = useState(false)
   const [overlapGap, setOverlapGap] = useState(0.05)
 
@@ -38,6 +39,7 @@ export default function App() {
             delta={delta}
             debug={debug}
             thick={thick}
+            bandWidth={bandWidth}
             overlap={overlap}
             overlapGap={overlapGap}
           />
@@ -106,6 +108,17 @@ export default function App() {
                 </div>
                 {thick && (
                   <>
+                    <div className="control-group">
+                      <label htmlFor="bandwidth-slider">Width</label>
+                      <input
+                        id="bandwidth-slider"
+                        type="range"
+                        min={0.01} max={0.5} step={0.01}
+                        value={bandWidth}
+                        onChange={e => setBandWidth(Number(e.target.value))}
+                      />
+                      <span className="slider-value">{bandWidth.toFixed(2)}</span>
+                    </div>
                     <div className="control-group">
                       <label htmlFor="overlap-check">Overlap</label>
                       <input

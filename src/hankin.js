@@ -125,8 +125,11 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
   if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05) {
-  const deltas = thick ? [delta - 0.25, delta + 0.25] : [delta]
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2) {
+  // halfThickDelta scales with 1/cos(theta) so the visual band width
+  // (= halfThickDelta * edgeLen * cos(theta)) stays constant at bandWidth * edgeLen.
+  const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(theta)) : 0
+  const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
 
   for (const shape of shapes) {
     const raw = shape[0]
