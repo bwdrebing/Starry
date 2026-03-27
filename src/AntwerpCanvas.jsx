@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
+import { drawHankin } from './hankin'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -23,11 +24,12 @@ function touchCenter(touches) {
   }
 }
 
-export default function AntwerpCanvas({ configuration, shapeSize = 48 }) {
+export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling' }) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
   const gestureRef = useRef(null)
+  const modeRef = useRef(mode)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -36,32 +38,58 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48 }) {
     const W = canvas.width
     const H = canvas.height
     const { x, y, scale } = transformRef.current
+    const currentMode = modeRef.current
 
     ctx.clearRect(0, 0, W, H)
     ctx.save()
     ctx.translate(W / 2 + x, H / 2 + y)
     ctx.scale(scale, scale)
 
-    for (const shape of shapesRef.current) {
-      const vertices = shape[0]
-      if (!vertices || vertices.length < 3) continue
-      const [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
-
-      ctx.beginPath()
-      ctx.moveTo(vertices[0][0], vertices[0][1])
-      for (let i = 1; i < vertices.length; i++) {
-        ctx.lineTo(vertices[i][0], vertices[i][1])
+    if (currentMode === 'tiling') {
+      for (const shape of shapesRef.current) {
+        const vertices = shape[0]
+        if (!vertices || vertices.length < 3) continue
+        const [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
+        ctx.beginPath()
+        ctx.moveTo(vertices[0][0], vertices[0][1])
+        for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
+        ctx.closePath()
+        ctx.fillStyle = fill
+        ctx.fill()
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = 1 / scale
+        ctx.stroke()
       }
-      ctx.closePath()
-      ctx.fillStyle = fill
-      ctx.fill()
-      ctx.strokeStyle = stroke
+    } else {
+      // Motif mode: faint outlines + Hankin straps
       ctx.lineWidth = 1 / scale
-      ctx.stroke()
+
+      // Faint polygon outlines
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+      for (const shape of shapesRef.current) {
+        const vertices = shape[0]
+        if (!vertices || vertices.length < 3) continue
+        ctx.beginPath()
+        ctx.moveTo(vertices[0][0], vertices[0][1])
+        for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
+        ctx.closePath()
+        ctx.stroke()
+      }
+
+      // Hankin straps
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+      ctx.lineWidth = 1.5 / scale
+      drawHankin(ctx, shapesRef.current, Math.PI / 4)
     }
 
     ctx.restore()
   }, [])
+
+  // Keep modeRef in sync and redraw when mode changes
+  useEffect(() => {
+    modeRef.current = mode
+    draw()
+  }, [mode, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
@@ -114,7 +142,6 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48 }) {
       e.preventDefault()
       const g = gestureRef.current
       if (!g) return
-
       if (g.type === 'pan' && e.touches.length === 1) {
         transformRef.current.x = e.touches[0].clientX - g.startX
         transformRef.current.y = e.touches[0].clientY - g.startY
@@ -131,9 +158,7 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48 }) {
       }
     }
 
-    function onTouchEnd() {
-      gestureRef.current = null
-    }
+    function onTouchEnd() { gestureRef.current = null }
 
     function onWheel(e) {
       e.preventDefault()
@@ -146,7 +171,6 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48 }) {
     canvas.addEventListener('touchmove', onTouchMove, { passive: false })
     canvas.addEventListener('touchend', onTouchEnd)
     canvas.addEventListener('wheel', onWheel, { passive: false })
-
     return () => {
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)

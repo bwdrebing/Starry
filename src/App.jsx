@@ -16,28 +16,46 @@ const TILINGS = [
   { label: '3⁴.6 — Snub Hexagonal',           config: '6-3-3/r60/r(h5)' },
 ]
 
+const TABS = ['tiling', 'motif']
+
 export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
-  const current = TILINGS[tilingIndex]
+  const [activeTab, setActiveTab] = useState('tiling')
 
   return (
     <div className="app">
       <StarryCanvas />
       <div className="card">
         <div className="card-canvas">
-          <AntwerpCanvas configuration={current.config} />
+          <AntwerpCanvas
+            configuration={TILINGS[tilingIndex].config}
+            mode={activeTab}
+          />
         </div>
         <div className="card-controls">
-          <label htmlFor="tiling-select">Tiling</label>
-          <select
-            id="tiling-select"
-            value={tilingIndex}
-            onChange={e => setTilingIndex(Number(e.target.value))}
-          >
-            {TILINGS.map((t, i) => (
-              <option key={t.config} value={i}>{t.label}</option>
+          <div className="tabs">
+            {TABS.map(tab => (
+              <button
+                key={tab}
+                className={`tab${activeTab === tab ? ' tab--active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
             ))}
-          </select>
+          </div>
+          <div className="control-group">
+            <label htmlFor="tiling-select">Pattern</label>
+            <select
+              id="tiling-select"
+              value={tilingIndex}
+              onChange={e => setTilingIndex(Number(e.target.value))}
+            >
+              {TILINGS.map((t, i) => (
+                <option key={t.config} value={i}>{t.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     </div>
