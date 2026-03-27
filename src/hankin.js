@@ -89,45 +89,48 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     const n = vertices.length
     const edges = makeEdgeRays(vertices, theta, delta)
 
+    // For each adjacent pair (i, i+1), pair the +theta ray of edge i with the
+    // −theta ray of edge i+1. These are the two rays that converge toward the
+    // star point between those two edges.
     for (let i = 0; i < n; i++) {
-      // Check each ray from edge i against all rays from the two adjacent edges.
-      // Whichever adjacent ray gives a valid forward intersection (both t > 0 and s > 0)
-      // is the correct partner — the geometry picks the right pairing automatically.
-      const adjacentRays = [
-        ...Object.values(edges[(i - 1 + n) % n]),
-        ...Object.values(edges[(i + 1) % n]),
-      ]
+      const j = (i + 1) % n
+      const rayA = edges[i].left      // +theta ray of edge i
+      const rayB = edges[j].right     // −theta ray of edge i+1
 
-      for (const ray of [edges[i].left, edges[i].right]) {
-        let endpoint = null
-        let bestT = Infinity
+      const result = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
+      const pt = result?.[2]
 
-        for (const other of adjacentRays) {
-          const result = rayIntersect(ray.origin, ray.dir, other.origin, other.dir)
-          if (result && result[0] < bestT) {
-            bestT = result[0]
-            endpoint = result[2]
-          }
-        }
+      const endA = pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
+      const endB = pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
 
-        endpoint ??= rayExitPolygon(ray.origin, ray.dir, vertices)
+      if (endA) {
+        ctx.beginPath()
+        ctx.moveTo(rayA.origin[0], rayA.origin[1])
+        ctx.lineTo(endA[0], endA[1])
+        ctx.stroke()
+      }
+      if (endB) {
+        ctx.beginPath()
+        ctx.moveTo(rayB.origin[0], rayB.origin[1])
+        ctx.lineTo(endB[0], endB[1])
+        ctx.stroke()
+      }
 
-        if (endpoint) {
+      if (debug && (endA || endB)) {
+        const r = 3 / (ctx.getTransform?.().a ?? 1)
+        ctx.save()
+        ctx.fillStyle = 'red'
+        if (endA) {
           ctx.beginPath()
-          ctx.moveTo(ray.origin[0], ray.origin[1])
-          ctx.lineTo(endpoint[0], endpoint[1])
-          ctx.stroke()
-
-          if (debug) {
-            const r = 3 / (ctx.getTransform?.().a ?? 1)
-            ctx.save()
-            ctx.fillStyle = 'red'
-            ctx.beginPath()
-            ctx.arc(endpoint[0], endpoint[1], r, 0, Math.PI * 2)
-            ctx.fill()
-            ctx.restore()
-          }
+          ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2)
+          ctx.fill()
         }
+        if (endB && pt == null) {
+          ctx.beginPath()
+          ctx.arc(endB[0], endB[1], r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.restore()
       }
     }
   }
