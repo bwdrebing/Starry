@@ -24,6 +24,22 @@ function rayIntersect(o1, d1, o2, d2) {
   return [t, add2D(o1, scale2D(d1, t))]
 }
 
+// Returns true if pt is inside (or on the boundary of) a convex polygon.
+// Works regardless of winding order.
+function insideConvexPolygon(pt, vertices) {
+  const n = vertices.length
+  let pos = 0, neg = 0
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i]
+    const b = vertices[(i + 1) % n]
+    const cross = (b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0])
+    if (cross > 1e-4) pos++
+    else if (cross < -1e-4) neg++
+    if (pos > 0 && neg > 0) return false
+  }
+  return true
+}
+
 function centroid(vertices) {
   const n = vertices.length
   return [
@@ -78,7 +94,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0) {
         const result = rayIntersect(ray.origin, ray.dir, other.origin, other.dir)
         if (result) {
           const [t, pt] = result
-          if (t < bestT) { bestT = t; bestPt = pt }
+          if (t < bestT && insideConvexPolygon(pt, vertices)) { bestT = t; bestPt = pt }
         }
       }
 
