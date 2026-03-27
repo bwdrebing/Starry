@@ -94,7 +94,8 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-// Returns t ∈ (0,1) where segment a→b is crossed by segment c→d, or null.
+// Returns t ∈ [0,1) where segment a→b is crossed by segment c→d, or null.
+// t=0 is included so shared-origin crossings (delta=0 case) are detected.
 function segmentCrossParam(a, b, c, d) {
   const dab = [b[0] - a[0], b[1] - a[1]]
   const dcd = [d[0] - c[0], d[1] - c[1]]
@@ -103,7 +104,7 @@ function segmentCrossParam(a, b, c, d) {
   const diff = sub2D(c, a)
   const t = cross2D(diff, dcd) / denom
   const s = cross2D(diff, dab) / denom
-  if (t < 1e-4 || t > 1 - 1e-4 || s < 0 || s > 1) return null
+  if (t < 0 || t > 1 - 1e-4 || s < 0 || s > 1) return null
   return t
 }
 
@@ -124,7 +125,7 @@ function pushWithGaps(segs, origin, end, dir, crossings, halfGap) {
     segs.push([prevPt, end])
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05) {
   const deltas = thick ? [delta - 0.25, delta + 0.25] : [delta]
 
   for (const shape of shapes) {
@@ -172,9 +173,8 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       // B+ is always on top
       for (const seg of bplus) overSegs.push([seg.origin, seg.end])
 
-      // For B-, find where each B+ line crosses it and apply Celtic-knot gaps
-      // Gap half-width derived from B+ strap width projected onto B- direction.
-      const halfGap = 0.0625 * edgeLen / Math.sin(theta)
+      // Gap half-width: user-configurable fraction of edge length
+      const halfGap = overlapGap * edgeLen
 
       for (const bm of bminus) {
         if (overlap && thick) {

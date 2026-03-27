@@ -24,7 +24,7 @@ function touchCenter(touches) {
   }
 }
 
-export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false }) {
+export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05 }) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
@@ -35,6 +35,7 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
   const debugRef = useRef(debug)
   const thickRef = useRef(thick)
   const overlapRef = useRef(overlap)
+  const overlapGapRef = useRef(overlapGap)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -84,7 +85,7 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
       // Hankin straps
       ctx.strokeStyle = 'rgba(255,255,255,0.85)'
       ctx.lineWidth = 1.5 / scale
-      drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current)
+      drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current)
     }
 
     ctx.restore()
@@ -98,8 +99,9 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
     debugRef.current = debug
     thickRef.current = thick
     overlapRef.current = overlap
+    overlapGapRef.current = overlapGap
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
