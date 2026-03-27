@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import './App.css'
@@ -51,6 +51,7 @@ const TILINGS = [
 ]
 
 export default function App() {
+  const canvasRef = useRef(null)
   const [tilingIndex, setTilingIndex] = useState(0)
   const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
@@ -67,6 +68,7 @@ export default function App() {
       <div className="card">
         <div className="card-canvas">
           <AntwerpCanvas
+            ref={canvasRef}
             configuration={TILINGS[tilingIndex].config}
             mode="motif"
             theta={thetaDeg * Math.PI / 180}
@@ -101,6 +103,9 @@ export default function App() {
               checked={showMotif}
               onChange={e => setShowMotif(e.target.checked)}
             />
+            <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
+              Export SVG
+            </button>
           </div>
 
           <div className="control-group">
