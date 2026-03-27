@@ -75,7 +75,7 @@
 /* Tab-specific controls area */
 .tab-controls {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 0.75rem;
   width: 100%;
 }
