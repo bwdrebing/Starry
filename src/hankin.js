@@ -81,10 +81,25 @@ function makeEdgeRays(vertices, theta, delta) {
   return edges
 }
 
+// Returns a copy of vertices guaranteed to be in clockwise order.
+function ensureClockwise(vertices) {
+  let area = 0
+  const n = vertices.length
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = vertices[i]
+    const [bx, by] = vertices[(i + 1) % n]
+    area += ax * by - bx * ay
+  }
+  // area > 0 means CCW — reverse to make CW
+  return area > 0 ? [...vertices].reverse() : vertices
+}
+
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false) {
   for (const shape of shapes) {
-    const vertices = shape[0]
-    if (!vertices || vertices.length < 3) continue
+    const raw = shape[0]
+    if (!raw || raw.length < 3) continue
+
+    const vertices = ensureClockwise(raw)
 
     const n = vertices.length
     const edges = makeEdgeRays(vertices, theta, delta)
