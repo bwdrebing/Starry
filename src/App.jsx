@@ -156,6 +156,17 @@ export default function App() {
                   </svg>
                 </button>
                 <button
+                  className={parquetDirection === 'btt' ? 'active' : ''}
+                  onClick={() => setParquetDirection('btt')}
+                  title="Bottom to Top"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="18" x2="5" y2="6"/><polyline points="3,8 5,6 7,8"/>
+                    <line x1="10" y1="18" x2="10" y2="6"/><polyline points="8,8 10,6 12,8"/>
+                    <line x1="15" y1="18" x2="15" y2="6"/><polyline points="13,8 15,6 17,8"/>
+                  </svg>
+                </button>
+                <button
                   className={parquetDirection === 'centered' ? 'active' : ''}
                   onClick={() => setParquetDirection('centered')}
                   title="Centered"

@@ -148,6 +148,16 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const minX = Math.min(...xs), maxX = Math.max(...xs)
     const rangeX = maxX - minX || 1e-8
     shapeWeights = xs.map(x => (x - minX) / rangeX)
+  } else if (parquetDirection === 'btt') {
+    const ys = shapes.map(shape => {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) return 0
+      return centroid(raw)[1]
+    })
+    const minY = Math.min(...ys), maxY = Math.max(...ys)
+    const rangeY = maxY - minY || 1e-8
+    // canvas y increases downward, so invert: bottom (high y) → weight 0, top (low y) → weight 1
+    shapeWeights = ys.map(y => (maxY - y) / rangeY)
   }
 
   for (let si = 0; si < shapes.length; si++) {
@@ -247,6 +257,14 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const minX = Math.min(...xs), maxX = Math.max(...xs)
       const rangeX = maxX - minX || 1e-8
       shapeWeights = xs.map(x => (x - minX) / rangeX)
+    } else if (parquetDirection === 'btt') {
+      const ys = shapes.map(shape => {
+        const raw = shape[0]; if (!raw || raw.length < 3) return 0
+        return centroid(raw)[1]
+      })
+      const minY = Math.min(...ys), maxY = Math.max(...ys)
+      const rangeY = maxY - minY || 1e-8
+      shapeWeights = ys.map(y => (maxY - y) / rangeY)
     }
 
     const debugPts = []
