@@ -1,6 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
-import { drawHankin } from './hankin'
+import { drawHankin, getHankinSegments } from './hankin'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -24,7 +24,10 @@ function touchCenter(touches) {
   }
 }
 
-export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true }) {
+function fmt(n) { return n.toFixed(4) }
+function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
+
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true }, ref) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
@@ -197,10 +200,59 @@ export default function AntwerpCanvas({ configuration, shapeSize = 48, mode = 't
     }
   }, [draw])
 
+  useImperativeHandle(ref, () => ({
+    exportSVG() {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const W = canvas.width
+      const H = canvas.height
+      const { x, y, scale } = transformRef.current
+      const shapes = shapesRef.current
+
+      const px = n => n.toFixed(4)
+
+      let motifContent = ''
+      if (showMotifRef.current) {
+        const { underSegs, overSegs } = getHankinSegments(
+          shapes,
+          thetaRef.current, deltaRef.current,
+          thickRef.current, overlapRef.current,
+          overlapGapRef.current, bandWidthRef.current
+        )
+        const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
+        const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
+        motifContent = `
+  <g id="under">
+${underPaths}
+  </g>
+  <g id="over">
+${overPaths}
+  </g>`
+      }
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+<g transform="translate(${px(W / 2 + x)},${px(H / 2 + y)}) scale(${px(scale)})">
+  <g id="motif" fill="none" stroke="#000" stroke-width="${px(1.5 / scale)}">${motifContent}
+  </g>
+</g>
+</svg>`
+
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'starry-pattern.svg'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  }))
+
   return (
     <canvas
       ref={canvasRef}
       style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }}
     />
   )
-}
+})
+
+export default AntwerpCanvas
