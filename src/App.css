@@ -122,6 +122,41 @@
   border-color: rgba(255, 255, 255, 0.35);
 }
 
+.parquet-toggle {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.parquet-toggle button {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0.3rem 0.55rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.parquet-toggle button:last-child {
+  border-right: none;
+}
+
+.parquet-toggle button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.parquet-toggle button.active {
+  background: rgba(200, 200, 255, 0.18);
+  color: rgba(200, 200, 255, 0.95);
+}
+
 .debug-toggle {
   position: relative;
   z-index: 1;

@@ -119,16 +119,42 @@ export default function App() {
           </div>
 
           <div className="control-group">
-            <label htmlFor="parquet-select">Parquet</label>
-            <select
-              id="parquet-select"
-              value={parquetDirection}
-              onChange={e => setParquetDirection(e.target.value)}
-            >
-              <option value="none">Off</option>
-              <option value="centered">Centered</option>
-              <option value="ltr">Left to Right</option>
-            </select>
+            <label>Parquet</label>
+            <div className="parquet-toggle">
+              <button
+                className={parquetDirection === 'none' ? 'active' : ''}
+                onClick={() => setParquetDirection('none')}
+                title="Off"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                  <line x1="4" y1="10" x2="16" y2="10"/>
+                </svg>
+              </button>
+              <button
+                className={parquetDirection === 'ltr' ? 'active' : ''}
+                onClick={() => setParquetDirection('ltr')}
+                title="Left to Right"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="2" y1="5" x2="14" y2="5"/><polyline points="12,3 14,5 12,7"/>
+                  <line x1="2" y1="10" x2="14" y2="10"/><polyline points="12,8 14,10 12,12"/>
+                  <line x1="2" y1="15" x2="14" y2="15"/><polyline points="12,13 14,15 12,17"/>
+                </svg>
+              </button>
+              <button
+                className={parquetDirection === 'centered' ? 'active' : ''}
+                onClick={() => setParquetDirection('centered')}
+                title="Centered"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none"/>
+                  <line x1="10" y1="7" x2="10" y2="3"/><polyline points="8.5,4.5 10,3 11.5,4.5"/>
+                  <line x1="10" y1="13" x2="10" y2="17"/><polyline points="8.5,15.5 10,17 11.5,15.5"/>
+                  <line x1="13" y1="10" x2="17" y2="10"/><polyline points="15.5,8.5 17,10 15.5,11.5"/>
+                  <line x1="7" y1="10" x2="3" y2="10"/><polyline points="4.5,8.5 3,10 4.5,11.5"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {parquetDirection === 'none' ? (
