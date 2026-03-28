@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
+import { generateMultigrid } from './penrose'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -10,6 +11,15 @@ const PALETTE = {
   12: ['rgba(255,200, 55,0.2)', 'rgba(255,200, 55,0.9)'],
 }
 const DEFAULT_COLOR = ['rgba(200,200,255,0.2)', 'rgba(200,200,255,0.8)']
+
+// Rhombus colours indexed by angular-step difference between line families.
+// diff=1 → most acute rhombus; higher diff → closer to a square.
+const MULTIGRID_COLORS = [
+  ['rgba(255,195, 40,0.28)', 'rgba(255,195, 40,0.90)'],  // diff 1 — gold
+  ['rgba(255,120, 40,0.22)', 'rgba(255,140, 50,0.85)'],  // diff 2 — amber
+  ['rgba(220,  60, 60,0.22)', 'rgba(230,  80, 80,0.85)'], // diff 3 — red
+  ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'], // diff 4 — purple
+]
 
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX
@@ -59,8 +69,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {
         const vertices = shape[0]
+        const meta     = shape[1]
         if (!vertices || vertices.length < 3) continue
-        const [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
+        let [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
+        if (meta?.multigrid) [fill, stroke] = MULTIGRID_COLORS[meta.diff - 1] ?? DEFAULT_COLOR
         ctx.beginPath()
         ctx.moveTo(vertices[0][0], vertices[0][1])
         for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
@@ -123,12 +135,17 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.width = W
     canvas.height = H
 
-    try {
-      const data = toShapes({ configuration, width: W, height: H, shapeSize })
-      shapesRef.current = data?.shapes ?? []
-    } catch (err) {
-      console.error('Failed to generate tiling:', err)
-      shapesRef.current = []
+    if (configuration.startsWith('penrose')) {
+      const sym = parseInt(configuration.slice(6)) || 5
+      shapesRef.current = generateMultigrid(W, H, sym)
+    } else {
+      try {
+        const data = toShapes({ configuration, width: W, height: H, shapeSize })
+        shapesRef.current = data?.shapes ?? []
+      } catch (err) {
+        console.error('Failed to generate tiling:', err)
+        shapesRef.current = []
+      }
     }
 
     transformRef.current = { x: 0, y: 0, scale: 1 }
