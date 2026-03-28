@@ -98,7 +98,7 @@ export default function App() {
           <svg
             width="16" height="16" viewBox="0 0 16 16"
             fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className={shelfCollapsed ? 'chevron-down' : 'chevron-up'}
+            className={shelfCollapsed ? '' : 'chevron-down'}
           >
             <polyline points="3,10 8,5 13,10"/>
           </svg>
