@@ -125,7 +125,7 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
   if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0) {
   const allUnder = [], allOver = []
 
   // Pre-compute per-shape interpolation weights for parquet deformation
@@ -158,6 +158,30 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const rangeY = maxY - minY || 1e-8
     // canvas y increases downward, so invert: bottom (high y) → weight 0, top (low y) → weight 1
     shapeWeights = ys.map(y => (maxY - y) / rangeY)
+  } else if (parquetDirection === 'fn') {
+    const centroids = shapes.map(shape => {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) return [0, 0]
+      return centroid(raw)
+    })
+    if (parquetFunction === 'wave-ltr') {
+      const xs = centroids.map(c => c[0])
+      const minX = Math.min(...xs), maxX = Math.max(...xs)
+      const rangeX = maxX - minX || 1e-8
+      shapeWeights = xs.map(x => (Math.sin(((x - minX) / rangeX) * Math.PI * 5 - time * 1.5) + 1) / 2)
+    } else if (parquetFunction === 'wave-btt') {
+      const ys = centroids.map(c => c[1])
+      const minY = Math.min(...ys), maxY = Math.max(...ys)
+      const rangeY = maxY - minY || 1e-8
+      shapeWeights = ys.map(y => (Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - time * 1.5) + 1) / 2)
+    } else if (parquetFunction === 'ripple') {
+      const dists = centroids.map(c => Math.sqrt(c[0] * c[0] + c[1] * c[1]))
+      const maxDist = Math.max(...dists, 1e-8)
+      shapeWeights = dists.map(d => (Math.sin((d / maxDist) * Math.PI * 6 - time * 2) + 1) / 2)
+    } else if (parquetFunction === 'pulse') {
+      const w = (Math.sin(time * 2) + 1) / 2
+      shapeWeights = shapes.map(() => w)
+    }
   }
 
   for (let si = 0; si < shapes.length; si++) {
@@ -229,8 +253,8 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
@@ -265,6 +289,29 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const minY = Math.min(...ys), maxY = Math.max(...ys)
       const rangeY = maxY - minY || 1e-8
       shapeWeights = ys.map(y => (maxY - y) / rangeY)
+    } else if (parquetDirection === 'fn') {
+      const cs = shapes.map(shape => {
+        const raw = shape[0]; if (!raw || raw.length < 3) return [0, 0]
+        return centroid(raw)
+      })
+      if (parquetFunction === 'wave-ltr') {
+        const xs = cs.map(c => c[0])
+        const minX = Math.min(...xs), maxX = Math.max(...xs)
+        const rangeX = maxX - minX || 1e-8
+        shapeWeights = xs.map(x => (Math.sin(((x - minX) / rangeX) * Math.PI * 5 - time * 1.5) + 1) / 2)
+      } else if (parquetFunction === 'wave-btt') {
+        const ys = cs.map(c => c[1])
+        const minY = Math.min(...ys), maxY = Math.max(...ys)
+        const rangeY = maxY - minY || 1e-8
+        shapeWeights = ys.map(y => (Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - time * 1.5) + 1) / 2)
+      } else if (parquetFunction === 'ripple') {
+        const dists = cs.map(c => Math.sqrt(c[0] * c[0] + c[1] * c[1]))
+        const maxDist = Math.max(...dists, 1e-8)
+        shapeWeights = dists.map(d => (Math.sin((d / maxDist) * Math.PI * 6 - time * 2) + 1) / 2)
+      } else if (parquetFunction === 'pulse') {
+        const w = (Math.sin(time * 2) + 1) / 2
+        shapeWeights = shapes.map(() => w)
+      }
     }
 
     const debugPts = []
