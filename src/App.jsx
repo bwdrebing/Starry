@@ -61,6 +61,7 @@ export default function App() {
   const [thetaDeg, setThetaDeg] = useState(45)
   const [parquetDirection, setParquetDirection] = useState('none')
   const [parquetFunction, setParquetFunction] = useState('wave-ltr')
+  const [animSpeed, setAnimSpeed] = useState(1)
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
   const [radius, setRadius] = useState(1)
@@ -94,6 +95,7 @@ export default function App() {
           overlapGap={overlapGap}
           showMotif={showMotif}
           parquetFunction={parquetFunction}
+          animSpeed={animSpeed}
         />
       </div>
 
@@ -253,6 +255,20 @@ export default function App() {
                     </svg>
                   </button>
                 </div>
+              </div>
+            )}
+
+            {parquetDirection === 'fn' && (
+              <div className="control-group">
+                <label htmlFor="anim-speed-slider">Speed</label>
+                <input
+                  id="anim-speed-slider"
+                  type="range"
+                  min={0} max={4} step={0.1}
+                  value={animSpeed}
+                  onChange={e => setAnimSpeed(Number(e.target.value))}
+                />
+                <span className="slider-value">{animSpeed.toFixed(1)}×</span>
               </div>
             )}
 

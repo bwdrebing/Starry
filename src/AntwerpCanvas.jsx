@@ -37,7 +37,7 @@ function touchCenter(touches) {
 function fmt(n) { return n.toFixed(4) }
 function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr' }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -57,6 +57,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const thetaMaxRef = useRef(thetaMax)
   const radiusRef = useRef(radius)
   const parquetFunctionRef = useRef(parquetFunction)
+  const animSpeedRef = useRef(animSpeed)
 
   // Filter allShapesRef by radius fraction and write result into shapesRef.
   const applyRadius = useCallback(() => {
@@ -126,7 +127,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current)
       }
     }
 
@@ -149,9 +150,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     thetaMaxRef.current = thetaMax
     radiusRef.current = radius
     parquetFunctionRef.current = parquetFunction
+    animSpeedRef.current = animSpeed
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
