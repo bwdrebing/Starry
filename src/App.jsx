@@ -59,138 +59,262 @@ export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
   const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
+  const [parquetDirection, setParquetDirection] = useState('none')
+  const [thetaMinDeg, setThetaMinDeg] = useState(30)
+  const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
+  const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [overlap, setOverlap] = useState(false)
   const [overlapGap, setOverlapGap] = useState(0.05)
+  const [shelfCollapsed, setShelfCollapsed] = useState(false)
 
   return (
     <div className="app">
       <StarryCanvas />
-      <div className="card">
-        <div className="card-canvas">
-          <AntwerpCanvas
-            ref={canvasRef}
-            configuration={TILINGS[tilingIndex].config}
-            mode="motif"
-            theta={thetaDeg * Math.PI / 180}
-            delta={delta}
-            debug={debug}
-            thick={thick}
-            bandWidth={bandWidth}
-            overlap={overlap}
-            overlapGap={overlapGap}
-            showMotif={showMotif}
-          />
-        </div>
-        <div className="card-controls">
-          <div className="control-group">
-            <label htmlFor="tiling-select">Pattern</label>
-            <select
-              id="tiling-select"
-              value={tilingIndex}
-              onChange={e => setTilingIndex(Number(e.target.value))}
-            >
-              {TILINGS.map((t, i) => (
-                <option key={t.config} value={i}>{t.label}</option>
-              ))}
-            </select>
-          </div>
 
-          <div className="control-group">
-            <label htmlFor="motif-check">Motif</label>
-            <input
-              id="motif-check"
-              type="checkbox"
-              checked={showMotif}
-              onChange={e => setShowMotif(e.target.checked)}
-            />
-            <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
-              Export SVG
-            </button>
-          </div>
+      <div className="canvas-layer">
+        <AntwerpCanvas
+          ref={canvasRef}
+          configuration={TILINGS[tilingIndex].config}
+          mode="motif"
+          theta={thetaDeg * Math.PI / 180}
+          parquetDirection={parquetDirection}
+          thetaMin={thetaMinDeg * Math.PI / 180}
+          thetaMax={thetaMaxDeg * Math.PI / 180}
+          radius={radius}
+          delta={delta}
+          debug={debug}
+          thick={thick}
+          bandWidth={bandWidth}
+          overlap={overlap}
+          overlapGap={overlapGap}
+          showMotif={showMotif}
+        />
+      </div>
 
-          <div className="control-group">
-            <label htmlFor="theta-slider">Angle</label>
-            <input
-              id="theta-slider"
-              type="range"
-              min={10} max={80} step={1}
-              value={thetaDeg}
-              onChange={e => setThetaDeg(Number(e.target.value))}
-            />
-            <span className="slider-value">{thetaDeg}°</span>
-          </div>
+      <div className="controls-shelf">
+        <button className="shelf-handle" onClick={() => setShelfCollapsed(c => !c)}>
+          <svg
+            width="16" height="16" viewBox="0 0 16 16"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className={shelfCollapsed ? '' : 'chevron-down'}
+          >
+            <polyline points="3,10 8,5 13,10"/>
+          </svg>
+        </button>
 
-          <div className="control-group">
-            <label htmlFor="delta-slider">Delta</label>
-            <input
-              id="delta-slider"
-              type="range"
-              min={0} max={0.9} step={0.01}
-              value={delta}
-              onChange={e => setDelta(Number(e.target.value))}
-            />
-            <span className="slider-value">{delta.toFixed(2)}</span>
-          </div>
+        <div className={`shelf-body${shelfCollapsed ? ' collapsed' : ''}`}>
+          <div className="shelf-body-inner">
 
-          <div className="control-group">
-            <label htmlFor="thick-check">Thick</label>
-            <input
-              id="thick-check"
-              type="checkbox"
-              checked={thick}
-              onChange={e => setThick(e.target.checked)}
-            />
-          </div>
+            <div className="control-group">
+              <label htmlFor="tiling-select">Pattern</label>
+              <select
+                id="tiling-select"
+                value={tilingIndex}
+                onChange={e => setTilingIndex(Number(e.target.value))}
+              >
+                {TILINGS.map((t, i) => (
+                  <option key={t.config} value={i}>{t.label}</option>
+                ))}
+              </select>
+            </div>
 
-          {thick && (
-            <>
+            <div className="control-group">
+              <label htmlFor="radius-slider">Radius</label>
+              <input
+                id="radius-slider"
+                type="range"
+                min={0.05} max={1} step={0.05}
+                value={radius}
+                onChange={e => setRadius(Number(e.target.value))}
+              />
+              <span className="slider-value">{Math.round(radius * 100)}%</span>
+            </div>
+
+            <div className="shelf-divider" />
+
+            <div className="control-group">
+              <label htmlFor="motif-check">Motif</label>
+              <input
+                id="motif-check"
+                type="checkbox"
+                checked={showMotif}
+                onChange={e => setShowMotif(e.target.checked)}
+              />
+            </div>
+
+            <div className="control-group">
+              <label>Parquet</label>
+              <div className="parquet-toggle">
+                <button
+                  className={parquetDirection === 'none' ? 'active' : ''}
+                  onClick={() => setParquetDirection('none')}
+                  title="Off"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                    <line x1="4" y1="10" x2="16" y2="10"/>
+                  </svg>
+                </button>
+                <button
+                  className={parquetDirection === 'ltr' ? 'active' : ''}
+                  onClick={() => setParquetDirection('ltr')}
+                  title="Left to Right"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="2" y1="5" x2="14" y2="5"/><polyline points="12,3 14,5 12,7"/>
+                    <line x1="2" y1="10" x2="14" y2="10"/><polyline points="12,8 14,10 12,12"/>
+                    <line x1="2" y1="15" x2="14" y2="15"/><polyline points="12,13 14,15 12,17"/>
+                  </svg>
+                </button>
+                <button
+                  className={parquetDirection === 'btt' ? 'active' : ''}
+                  onClick={() => setParquetDirection('btt')}
+                  title="Bottom to Top"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="18" x2="5" y2="6"/><polyline points="3,8 5,6 7,8"/>
+                    <line x1="10" y1="18" x2="10" y2="6"/><polyline points="8,8 10,6 12,8"/>
+                    <line x1="15" y1="18" x2="15" y2="6"/><polyline points="13,8 15,6 17,8"/>
+                  </svg>
+                </button>
+                <button
+                  className={parquetDirection === 'centered' ? 'active' : ''}
+                  onClick={() => setParquetDirection('centered')}
+                  title="Centered"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none"/>
+                    <line x1="10" y1="7" x2="10" y2="3"/><polyline points="8.5,4.5 10,3 11.5,4.5"/>
+                    <line x1="10" y1="13" x2="10" y2="17"/><polyline points="8.5,15.5 10,17 11.5,15.5"/>
+                    <line x1="13" y1="10" x2="17" y2="10"/><polyline points="15.5,8.5 17,10 15.5,11.5"/>
+                    <line x1="7" y1="10" x2="3" y2="10"/><polyline points="4.5,8.5 3,10 4.5,11.5"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {parquetDirection === 'none' ? (
               <div className="control-group">
-                <label htmlFor="bandwidth-slider">Width</label>
+                <label htmlFor="theta-slider">Angle</label>
                 <input
-                  id="bandwidth-slider"
+                  id="theta-slider"
                   type="range"
-                  min={0.01} max={0.5} step={0.01}
-                  value={bandWidth}
-                  onChange={e => setBandWidth(Number(e.target.value))}
+                  min={10} max={80} step={1}
+                  value={thetaDeg}
+                  onChange={e => setThetaDeg(Number(e.target.value))}
                 />
-                <span className="slider-value">{bandWidth.toFixed(2)}</span>
+                <span className="slider-value">{thetaDeg}°</span>
               </div>
-
-              <div className="control-group">
-                <label htmlFor="overlap-check">Overlap</label>
-                <input
-                  id="overlap-check"
-                  type="checkbox"
-                  checked={overlap}
-                  onChange={e => setOverlap(e.target.checked)}
-                />
-              </div>
-
-              {overlap && (
+            ) : (
+              <>
                 <div className="control-group">
-                  <label htmlFor="gap-slider">Gap</label>
+                  <label htmlFor="theta-min-slider">Min</label>
                   <input
-                    id="gap-slider"
+                    id="theta-min-slider"
                     type="range"
-                    min={0} max={0.3} step={0.005}
-                    value={overlapGap}
-                    onChange={e => setOverlapGap(Number(e.target.value))}
+                    min={10} max={80} step={1}
+                    value={thetaMinDeg}
+                    onChange={e => setThetaMinDeg(Number(e.target.value))}
                   />
-                  <span className="slider-value">{overlapGap.toFixed(3)}</span>
+                  <span className="slider-value">{thetaMinDeg}°</span>
                 </div>
-              )}
-            </>
-          )}
+                <div className="control-group">
+                  <label htmlFor="theta-max-slider">Max</label>
+                  <input
+                    id="theta-max-slider"
+                    type="range"
+                    min={10} max={80} step={1}
+                    value={thetaMaxDeg}
+                    onChange={e => setThetaMaxDeg(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{thetaMaxDeg}°</span>
+                </div>
+              </>
+            )}
+
+            <div className="shelf-divider" />
+
+            <div className="control-group">
+              <label htmlFor="delta-slider">Delta</label>
+              <input
+                id="delta-slider"
+                type="range"
+                min={0} max={0.9} step={0.01}
+                value={delta}
+                onChange={e => setDelta(Number(e.target.value))}
+              />
+              <span className="slider-value">{delta.toFixed(2)}</span>
+            </div>
+
+            <div className="control-group">
+              <label htmlFor="thick-check">Thick</label>
+              <input
+                id="thick-check"
+                type="checkbox"
+                checked={thick}
+                onChange={e => setThick(e.target.checked)}
+              />
+            </div>
+
+            {thick && (
+              <>
+                <div className="control-group">
+                  <label htmlFor="bandwidth-slider">Width</label>
+                  <input
+                    id="bandwidth-slider"
+                    type="range"
+                    min={0.01} max={0.5} step={0.01}
+                    value={bandWidth}
+                    onChange={e => setBandWidth(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{bandWidth.toFixed(2)}</span>
+                </div>
+
+                <div className="control-group">
+                  <label htmlFor="overlap-check">Overlap</label>
+                  <input
+                    id="overlap-check"
+                    type="checkbox"
+                    checked={overlap}
+                    onChange={e => setOverlap(e.target.checked)}
+                  />
+                </div>
+
+                {overlap && (
+                  <div className="control-group">
+                    <label htmlFor="gap-slider">Gap</label>
+                    <input
+                      id="gap-slider"
+                      type="range"
+                      min={0} max={0.3} step={0.005}
+                      value={overlapGap}
+                      onChange={e => setOverlapGap(Number(e.target.value))}
+                    />
+                    <span className="slider-value">{overlapGap.toFixed(3)}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="shelf-divider" />
+
+            <div className="control-group">
+              <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
+                Export SVG
+              </button>
+            </div>
+
+            <label className="debug-toggle">
+              <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
+              debug
+            </label>
+
+          </div>
         </div>
       </div>
-      <label className="debug-toggle">
-        <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
-        debug
-      </label>
     </div>
   )
 }

@@ -37,8 +37,9 @@ function touchCenter(touches) {
 function fmt(n) { return n.toFixed(4) }
 function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1 }, ref) {
   const canvasRef = useRef(null)
+  const allShapesRef = useRef([])
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
   const gestureRef = useRef(null)
@@ -51,6 +52,27 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const overlapGapRef = useRef(overlapGap)
   const bandWidthRef = useRef(bandWidth)
   const showMotifRef = useRef(showMotif)
+  const parquetDirectionRef = useRef(parquetDirection)
+  const thetaMinRef = useRef(thetaMin)
+  const thetaMaxRef = useRef(thetaMax)
+  const radiusRef = useRef(radius)
+
+  // Filter allShapesRef by radius fraction and write result into shapesRef.
+  const applyRadius = useCallback(() => {
+    const r = radiusRef.current
+    const all = allShapesRef.current
+    if (r >= 1) { shapesRef.current = all; return }
+    const dists = all.map(shape => {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) return 0
+      const n = raw.length
+      const cx = raw.reduce((s, v) => s + v[0], 0) / n
+      const cy = raw.reduce((s, v) => s + v[1], 0) / n
+      return Math.sqrt(cx * cx + cy * cy)
+    })
+    const maxDist = Math.max(...dists, 1e-8)
+    shapesRef.current = all.filter((_, i) => dists[i] <= r * maxDist)
+  }, [])
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -103,7 +125,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current)
       }
     }
 
@@ -121,8 +143,13 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     overlapGapRef.current = overlapGap
     bandWidthRef.current = bandWidth
     showMotifRef.current = showMotif
+    parquetDirectionRef.current = parquetDirection
+    thetaMinRef.current = thetaMin
+    thetaMaxRef.current = thetaMax
+    radiusRef.current = radius
+    applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, applyRadius, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
@@ -137,20 +164,21 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
-      shapesRef.current = generateMultigrid(W, H, sym)
+      allShapesRef.current = generateMultigrid(W, H, sym)
     } else {
       try {
         const data = toShapes({ configuration, width: W, height: H, shapeSize })
-        shapesRef.current = data?.shapes ?? []
+        allShapesRef.current = data?.shapes ?? []
       } catch (err) {
         console.error('Failed to generate tiling:', err)
-        shapesRef.current = []
+        allShapesRef.current = []
       }
     }
+    applyRadius()
 
     transformRef.current = { x: 0, y: 0, scale: 1 }
     draw()
-  }, [configuration, shapeSize, draw])
+  }, [configuration, shapeSize, applyRadius, draw])
 
   // Touch and wheel interaction
   useEffect(() => {
@@ -234,7 +262,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           shapes,
           thetaRef.current, deltaRef.current,
           thickRef.current, overlapRef.current,
-          overlapGapRef.current, bandWidthRef.current
+          overlapGapRef.current, bandWidthRef.current,
+          parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current
         )
         const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
         const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
