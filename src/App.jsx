@@ -62,6 +62,7 @@ export default function App() {
   const [parquetDirection, setParquetDirection] = useState('none')
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
+  const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
@@ -83,6 +84,7 @@ export default function App() {
           parquetDirection={parquetDirection}
           thetaMin={thetaMinDeg * Math.PI / 180}
           thetaMax={thetaMaxDeg * Math.PI / 180}
+          radius={radius}
           delta={delta}
           debug={debug}
           thick={thick}
@@ -118,6 +120,18 @@ export default function App() {
                   <option key={t.config} value={i}>{t.label}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="control-group">
+              <label htmlFor="radius-slider">Radius</label>
+              <input
+                id="radius-slider"
+                type="range"
+                min={0.05} max={1} step={0.05}
+                value={radius}
+                onChange={e => setRadius(Number(e.target.value))}
+              />
+              <span className="slider-value">{Math.round(radius * 100)}%</span>
             </div>
 
             <div className="shelf-divider" />
