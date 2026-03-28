@@ -60,6 +60,7 @@ export default function App() {
   const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
   const [parquetDirection, setParquetDirection] = useState('none')
+  const [parquetFunction, setParquetFunction] = useState('wave-ltr')
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
   const [radius, setRadius] = useState(1)
@@ -92,6 +93,7 @@ export default function App() {
           overlap={overlap}
           overlapGap={overlapGap}
           showMotif={showMotif}
+          parquetFunction={parquetFunction}
         />
       </div>
 
@@ -193,8 +195,66 @@ export default function App() {
                     <line x1="7" y1="10" x2="3" y2="10"/><polyline points="4.5,8.5 3,10 4.5,11.5"/>
                   </svg>
                 </button>
+                <button
+                  className={parquetDirection === 'fn' ? 'active' : ''}
+                  onClick={() => setParquetDirection('fn')}
+                  title="Animated function"
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M 2,10 C 4,4 6,4 8,10 C 10,16 12,16 14,10 C 16,4 18,4 19,7"/>
+                    <circle cx="19" cy="7" r="1.2" fill="currentColor" stroke="none"/>
+                  </svg>
+                </button>
               </div>
             </div>
+
+            {parquetDirection === 'fn' && (
+              <div className="control-group">
+                <label>Shape</label>
+                <div className="parquet-fn-picker">
+                  <button
+                    className={parquetFunction === 'wave-ltr' ? 'active' : ''}
+                    onClick={() => setParquetFunction('wave-ltr')}
+                    title="Wave left to right"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M 1,10 C 3,4 5,4 7,10 C 9,16 11,16 13,10 C 15,4 17,4 19,10"/>
+                      <polyline points="16,8 19,10 16,12" strokeWidth="1.2"/>
+                    </svg>
+                  </button>
+                  <button
+                    className={parquetFunction === 'wave-btt' ? 'active' : ''}
+                    onClick={() => setParquetFunction('wave-btt')}
+                    title="Wave bottom to top"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M 10,19 C 4,17 4,15 10,13 C 16,11 16,9 10,7 C 4,5 4,3 10,1"/>
+                      <polyline points="8,4 10,1 12,4" strokeWidth="1.2"/>
+                    </svg>
+                  </button>
+                  <button
+                    className={parquetFunction === 'ripple' ? 'active' : ''}
+                    onClick={() => setParquetFunction('ripple')}
+                    title="Ripple from center"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <circle cx="10" cy="10" r="1.8" fill="currentColor" stroke="none"/>
+                      <circle cx="10" cy="10" r="4.5" opacity="0.7"/>
+                      <circle cx="10" cy="10" r="8" opacity="0.35"/>
+                    </svg>
+                  </button>
+                  <button
+                    className={parquetFunction === 'pulse' ? 'active' : ''}
+                    onClick={() => setParquetFunction('pulse')}
+                    title="Global pulse"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M 1,10 L 5,10 L 7,4 L 9,16 L 11,4 L 13,16 L 15,10 L 19,10"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {parquetDirection === 'none' ? (
               <div className="control-group">
