@@ -125,19 +125,29 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
   if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDeformation = false, thetaMin = theta, thetaMax = theta) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta) {
   const allUnder = [], allOver = []
 
-  // Pre-compute per-shape distances from origin for parquet deformation
-  let shapeDists = null, maxDist = 1
-  if (parquetDeformation) {
-    shapeDists = shapes.map(shape => {
+  // Pre-compute per-shape interpolation weights for parquet deformation
+  let shapeWeights = null
+  if (parquetDirection === 'centered') {
+    const dists = shapes.map(shape => {
       const raw = shape[0]
       if (!raw || raw.length < 3) return 0
       const c = centroid(raw)
       return Math.sqrt(c[0] * c[0] + c[1] * c[1])
     })
-    maxDist = Math.max(...shapeDists, 1e-8)
+    const maxDist = Math.max(...dists, 1e-8)
+    shapeWeights = dists.map(d => d / maxDist)
+  } else if (parquetDirection === 'ltr') {
+    const xs = shapes.map(shape => {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) return 0
+      return centroid(raw)[0]
+    })
+    const minX = Math.min(...xs), maxX = Math.max(...xs)
+    const rangeX = maxX - minX || 1e-8
+    shapeWeights = xs.map(x => (x - minX) / rangeX)
   }
 
   for (let si = 0; si < shapes.length; si++) {
@@ -147,8 +157,8 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
-    const shapeTheta = parquetDeformation
-      ? thetaMin + (shapeDists[si] / maxDist) * (thetaMax - thetaMin)
+    const shapeTheta = shapeWeights
+      ? thetaMin + shapeWeights[si] * (thetaMax - thetaMin)
       : theta
 
     const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0
@@ -209,8 +219,8 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDeformation = false, thetaMin = theta, thetaMax = theta) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDeformation, thetaMin, thetaMax)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
@@ -220,16 +230,23 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   }
 
   if (debug) {
-    // Pre-compute per-shape distances for parquet deformation debug
-    let shapeDists = null, maxDist = 1
-    if (parquetDeformation) {
-      shapeDists = shapes.map(shape => {
-        const raw = shape[0]
-        if (!raw || raw.length < 3) return 0
-        const c = centroid(raw)
-        return Math.sqrt(c[0] * c[0] + c[1] * c[1])
+    // Re-compute per-shape weights for debug point rendering
+    let shapeWeights = null
+    if (parquetDirection === 'centered') {
+      const dists = shapes.map(shape => {
+        const raw = shape[0]; if (!raw || raw.length < 3) return 0
+        const c = centroid(raw); return Math.sqrt(c[0] * c[0] + c[1] * c[1])
       })
-      maxDist = Math.max(...shapeDists, 1e-8)
+      const maxDist = Math.max(...dists, 1e-8)
+      shapeWeights = dists.map(d => d / maxDist)
+    } else if (parquetDirection === 'ltr') {
+      const xs = shapes.map(shape => {
+        const raw = shape[0]; if (!raw || raw.length < 3) return 0
+        return centroid(raw)[0]
+      })
+      const minX = Math.min(...xs), maxX = Math.max(...xs)
+      const rangeX = maxX - minX || 1e-8
+      shapeWeights = xs.map(x => (x - minX) / rangeX)
     }
 
     const debugPts = []
@@ -240,8 +257,8 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
-      const shapeTheta = parquetDeformation
-        ? thetaMin + (shapeDists[si] / maxDist) * (thetaMax - thetaMin)
+      const shapeTheta = shapeWeights
+        ? thetaMin + shapeWeights[si] * (thetaMax - thetaMin)
         : theta
 
       const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0

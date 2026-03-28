@@ -59,7 +59,7 @@ export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
   const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
-  const [parquetDeformation, setParquetDeformation] = useState(false)
+  const [parquetDirection, setParquetDirection] = useState('none')
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
   const [delta, setDelta] = useState(0)
@@ -79,7 +79,7 @@ export default function App() {
             configuration={TILINGS[tilingIndex].config}
             mode="motif"
             theta={thetaDeg * Math.PI / 180}
-            parquetDeformation={parquetDeformation}
+            parquetDirection={parquetDirection}
             thetaMin={thetaMinDeg * Math.PI / 180}
             thetaMax={thetaMaxDeg * Math.PI / 180}
             delta={delta}
@@ -119,16 +119,19 @@ export default function App() {
           </div>
 
           <div className="control-group">
-            <label htmlFor="parquet-check">Parquet</label>
-            <input
-              id="parquet-check"
-              type="checkbox"
-              checked={parquetDeformation}
-              onChange={e => setParquetDeformation(e.target.checked)}
-            />
+            <label htmlFor="parquet-select">Parquet</label>
+            <select
+              id="parquet-select"
+              value={parquetDirection}
+              onChange={e => setParquetDirection(e.target.value)}
+            >
+              <option value="none">Off</option>
+              <option value="centered">Centered</option>
+              <option value="ltr">Left to Right</option>
+            </select>
           </div>
 
-          {!parquetDeformation ? (
+          {parquetDirection === 'none' ? (
             <div className="control-group">
               <label htmlFor="theta-slider">Angle</label>
               <input
