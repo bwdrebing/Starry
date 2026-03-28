@@ -125,11 +125,11 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
   if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2) {
-  // halfThickDelta scales with 1/cos(theta) so the visual band width
-  // (= halfThickDelta * edgeLen * cos(theta)) stays constant at bandWidth * edgeLen.
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2) {
   const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(theta)) : 0
   const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
+
+  const allUnder = [], allOver = []
 
   for (const shape of shapes) {
     const raw = shape[0]
@@ -137,8 +137,6 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
-    // Precompute edge rays and star-point endpoints for each delta pass.
-    // sp[di][i] = { endA, endB } for pair (i, i+1) at delta index di.
     const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, theta, d))
     const sp = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
@@ -152,69 +150,83 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       })
     )
 
-    const underSegs = [], overSegs = [], debugPts = []
-
     for (let i = 0; i < n; i++) {
       const prev = (i - 1 + n) % n
       const va = vertices[i], vb = vertices[(i + 1) % n]
       const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
 
-      // B+ segments: left ray of edge i (one per delta pass), end = star point for pair (i, i+1)
       const bplus = allEdgeRays.map((edges, di) => {
         const ray = edges[i].left
         const end = sp[di][i].endA
         return end ? { origin: ray.origin, dir: ray.dir, end } : null
       }).filter(Boolean)
 
-      // B- segments: right ray of edge i (one per delta pass), end = star point for pair (prev, i)
       const bminus = allEdgeRays.map((edges, di) => {
         const ray = edges[i].right
         const end = sp[di][prev].endB
         return end ? { origin: ray.origin, dir: ray.dir, end } : null
       }).filter(Boolean)
 
-      // B+ is always on top
-      for (const seg of bplus) overSegs.push([seg.origin, seg.end])
+      for (const seg of bplus) allOver.push([seg.origin, seg.end])
 
       const extraGap = overlapGap * edgeLen
-
       for (const bm of bminus) {
         if (overlap && thick) {
-          // Find where B- crosses each B+ line. t is unclamped so crossings
-          // before the origin (e.g. at delta=0, shared-origin case) are found,
-          // then clamped to [0,1] so the gap always covers the full B+ band width.
           const ts = bplus
             .map(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
             .filter(t => t !== null)
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
           if (ts.length >= 2) {
-            pushWithBandGap(underSegs, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
+            pushWithBandGap(allUnder, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
           } else {
-            underSegs.push([bm.origin, bm.end])
+            allUnder.push([bm.origin, bm.end])
           }
         } else {
-          underSegs.push([bm.origin, bm.end])
+          allUnder.push([bm.origin, bm.end])
         }
       }
+    }
+  }
 
-      if (debug) {
+  return { underSegs: allUnder, overSegs: allOver }
+}
+
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth)
+
+  for (const [p1, p2] of underSegs) {
+    ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
+  }
+  for (const [p1, p2] of overSegs) {
+    ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
+  }
+
+  if (debug) {
+    const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(theta)) : 0
+    const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
+    const debugPts = []
+    for (const shape of shapes) {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) continue
+      const vertices = ensureClockwise(raw)
+      const n = vertices.length
+      const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, theta, d))
+      const sp = allEdgeRays.map(edges =>
+        Array.from({ length: n }, (_, i) => {
+          const j = (i + 1) % n
+          const rayA = edges[i].left, rayB = edges[j].right
+          const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+          return { endA: pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
+        })
+      )
+      for (let i = 0; i < n; i++)
         for (let di = 0; di < deltas.length; di++)
           if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
-      }
     }
-
-    for (const [p1, p2] of underSegs) {
-      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
-    }
-    for (const [p1, p2] of overSegs) {
-      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
-    }
-    if (debugPts.length) {
-      const r = 3 / (ctx.getTransform?.().a ?? 1)
-      ctx.save(); ctx.fillStyle = 'red'
-      for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
-      ctx.restore()
-    }
+    const r = 3 / (ctx.getTransform?.().a ?? 1)
+    ctx.save(); ctx.fillStyle = 'red'
+    for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
+    ctx.restore()
   }
 }
