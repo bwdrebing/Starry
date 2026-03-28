@@ -210,14 +210,6 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const shapes = shapesRef.current
 
       const px = n => n.toFixed(4)
-      const polyPath = vertices =>
-        `M ${vertices.map(([vx, vy]) => `${px(vx)},${px(vy)}`).join(' L ')} Z`
-
-      const outlinePaths = shapes
-        .map(s => s[0])
-        .filter(v => v && v.length >= 3)
-        .map(v => `  <path d="${polyPath(v)}"/>`)
-        .join('\n')
 
       let motifContent = ''
       if (showMotifRef.current) {
@@ -240,9 +232,6 @@ ${overPaths}
 
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <g transform="translate(${px(W / 2 + x)},${px(H / 2 + y)}) scale(${px(scale)})">
-  <g id="tiling" fill="none" stroke="#000" stroke-width="${px(1 / scale)}">
-${outlinePaths}
-  </g>
   <g id="motif" fill="none" stroke="#000" stroke-width="${px(1.5 / scale)}">${motifContent}
   </g>
 </g>
