@@ -59,6 +59,9 @@ export default function App() {
   const [tilingIndex, setTilingIndex] = useState(0)
   const [showMotif, setShowMotif] = useState(true)
   const [thetaDeg, setThetaDeg] = useState(45)
+  const [parquetDeformation, setParquetDeformation] = useState(false)
+  const [thetaMinDeg, setThetaMinDeg] = useState(30)
+  const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
@@ -76,6 +79,9 @@ export default function App() {
             configuration={TILINGS[tilingIndex].config}
             mode="motif"
             theta={thetaDeg * Math.PI / 180}
+            parquetDeformation={parquetDeformation}
+            thetaMin={thetaMinDeg * Math.PI / 180}
+            thetaMax={thetaMaxDeg * Math.PI / 180}
             delta={delta}
             debug={debug}
             thick={thick}
@@ -113,16 +119,53 @@ export default function App() {
           </div>
 
           <div className="control-group">
-            <label htmlFor="theta-slider">Angle</label>
+            <label htmlFor="parquet-check">Parquet</label>
             <input
-              id="theta-slider"
-              type="range"
-              min={10} max={80} step={1}
-              value={thetaDeg}
-              onChange={e => setThetaDeg(Number(e.target.value))}
+              id="parquet-check"
+              type="checkbox"
+              checked={parquetDeformation}
+              onChange={e => setParquetDeformation(e.target.checked)}
             />
-            <span className="slider-value">{thetaDeg}°</span>
           </div>
+
+          {!parquetDeformation ? (
+            <div className="control-group">
+              <label htmlFor="theta-slider">Angle</label>
+              <input
+                id="theta-slider"
+                type="range"
+                min={10} max={80} step={1}
+                value={thetaDeg}
+                onChange={e => setThetaDeg(Number(e.target.value))}
+              />
+              <span className="slider-value">{thetaDeg}°</span>
+            </div>
+          ) : (
+            <>
+              <div className="control-group">
+                <label htmlFor="theta-min-slider">Min Angle</label>
+                <input
+                  id="theta-min-slider"
+                  type="range"
+                  min={10} max={80} step={1}
+                  value={thetaMinDeg}
+                  onChange={e => setThetaMinDeg(Number(e.target.value))}
+                />
+                <span className="slider-value">{thetaMinDeg}°</span>
+              </div>
+              <div className="control-group">
+                <label htmlFor="theta-max-slider">Max Angle</label>
+                <input
+                  id="theta-max-slider"
+                  type="range"
+                  min={10} max={80} step={1}
+                  value={thetaMaxDeg}
+                  onChange={e => setThetaMaxDeg(Number(e.target.value))}
+                />
+                <span className="slider-value">{thetaMaxDeg}°</span>
+              </div>
+            </>
+          )}
 
           <div className="control-group">
             <label htmlFor="delta-slider">Delta</label>

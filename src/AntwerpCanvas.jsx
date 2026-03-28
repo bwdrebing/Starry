@@ -37,7 +37,7 @@ function touchCenter(touches) {
 function fmt(n) { return n.toFixed(4) }
 function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDeformation = false, thetaMin = Math.PI / 4, thetaMax = Math.PI / 4 }, ref) {
   const canvasRef = useRef(null)
   const shapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
@@ -51,6 +51,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const overlapGapRef = useRef(overlapGap)
   const bandWidthRef = useRef(bandWidth)
   const showMotifRef = useRef(showMotif)
+  const parquetDeformationRef = useRef(parquetDeformation)
+  const thetaMinRef = useRef(thetaMin)
+  const thetaMaxRef = useRef(thetaMax)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -103,7 +106,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDeformationRef.current, thetaMinRef.current, thetaMaxRef.current)
       }
     }
 
@@ -121,8 +124,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     overlapGapRef.current = overlapGap
     bandWidthRef.current = bandWidth
     showMotifRef.current = showMotif
+    parquetDeformationRef.current = parquetDeformation
+    thetaMinRef.current = thetaMin
+    thetaMaxRef.current = thetaMax
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDeformation, thetaMin, thetaMax, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
@@ -234,7 +240,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           shapes,
           thetaRef.current, deltaRef.current,
           thickRef.current, overlapRef.current,
-          overlapGapRef.current, bandWidthRef.current
+          overlapGapRef.current, bandWidthRef.current,
+          parquetDeformationRef.current, thetaMinRef.current, thetaMaxRef.current
         )
         const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
         const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
