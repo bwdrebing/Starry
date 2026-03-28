@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
-import { generatePenrose } from './penrose'
+import { generateMultigrid } from './penrose'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -10,9 +10,16 @@ const PALETTE = {
   8:  ['rgba( 67,210,163,0.2)', 'rgba( 67,210,163,0.9)'],
   12: ['rgba(255,200, 55,0.2)', 'rgba(255,200, 55,0.9)'],
 }
-const DEFAULT_COLOR   = ['rgba(200,200,255,0.2)', 'rgba(200,200,255,0.8)']
-const PENROSE_THICK   = ['rgba(255,195, 40,0.28)', 'rgba(255,195, 40,0.9)']  // gold
-const PENROSE_THIN    = ['rgba(255,120, 40,0.22)', 'rgba(255,140, 50,0.85)'] // amber
+const DEFAULT_COLOR = ['rgba(200,200,255,0.2)', 'rgba(200,200,255,0.8)']
+
+// Rhombus colours indexed by angular-step difference between line families.
+// diff=1 → most acute rhombus; higher diff → closer to a square.
+const MULTIGRID_COLORS = [
+  ['rgba(255,195, 40,0.28)', 'rgba(255,195, 40,0.90)'],  // diff 1 — gold
+  ['rgba(255,120, 40,0.22)', 'rgba(255,140, 50,0.85)'],  // diff 2 — amber
+  ['rgba(220,  60, 60,0.22)', 'rgba(230,  80, 80,0.85)'], // diff 3 — red
+  ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'], // diff 4 — purple
+]
 
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX
@@ -65,7 +72,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         const meta     = shape[1]
         if (!vertices || vertices.length < 3) continue
         let [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
-        if (meta?.penrose) [fill, stroke] = meta.thick ? PENROSE_THICK : PENROSE_THIN
+        if (meta?.multigrid) [fill, stroke] = MULTIGRID_COLORS[meta.diff - 1] ?? DEFAULT_COLOR
         ctx.beginPath()
         ctx.moveTo(vertices[0][0], vertices[0][1])
         for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
@@ -128,8 +135,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.width = W
     canvas.height = H
 
-    if (configuration === 'penrose') {
-      shapesRef.current = generatePenrose(W, H)
+    if (configuration.startsWith('penrose')) {
+      const sym = parseInt(configuration.slice(6)) || 5
+      shapesRef.current = generateMultigrid(W, H, sym)
     } else {
       try {
         const data = toShapes({ configuration, width: W, height: H, shapeSize })

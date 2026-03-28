@@ -49,7 +49,9 @@ const TILINGS = [
   { label: '3-Uniform: [3⁶; 3⁴.6; 3.6.3.6]³',            config: '3-3-6/r60/r(v4)' },
   { label: '3-Uniform: [3².6²; 3.6.3.6; 6³]¹',           config: '6-6-3,3,3/r60/r(h2)' },
   // ── Quasi-periodic ───────────────────────────────────────────────────────
-  { label: 'Penrose: P3 Rhombus',                         config: 'penrose' },
+  { label: 'Quasi-periodic: 5-fold (Penrose P3)',          config: 'penrose' },
+  { label: 'Quasi-periodic: 7-fold',                       config: 'penrose7' },
+  { label: 'Quasi-periodic: 8-fold (Ammann-Beenker)',      config: 'penrose8' },
 ]
 
 export default function App() {
