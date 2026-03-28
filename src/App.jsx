@@ -48,6 +48,8 @@ const TILINGS = [
   { label: '3-Uniform: [3⁶; 3⁴.6; 3².6²]³',              config: '6-3-3/m90/r(h2)' },
   { label: '3-Uniform: [3⁶; 3⁴.6; 3.6.3.6]³',            config: '3-3-6/r60/r(v4)' },
   { label: '3-Uniform: [3².6²; 3.6.3.6; 6³]¹',           config: '6-6-3,3,3/r60/r(h2)' },
+  // ── Quasi-periodic ───────────────────────────────────────────────────────
+  { label: 'Penrose: P3 Rhombus',                         config: 'penrose' },
 ]
 
 export default function App() {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
+import { generatePenrose } from './penrose'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -9,7 +10,9 @@ const PALETTE = {
   8:  ['rgba( 67,210,163,0.2)', 'rgba( 67,210,163,0.9)'],
   12: ['rgba(255,200, 55,0.2)', 'rgba(255,200, 55,0.9)'],
 }
-const DEFAULT_COLOR = ['rgba(200,200,255,0.2)', 'rgba(200,200,255,0.8)']
+const DEFAULT_COLOR   = ['rgba(200,200,255,0.2)', 'rgba(200,200,255,0.8)']
+const PENROSE_THICK   = ['rgba(255,195, 40,0.28)', 'rgba(255,195, 40,0.9)']  // gold
+const PENROSE_THIN    = ['rgba(255,120, 40,0.22)', 'rgba(255,140, 50,0.85)'] // amber
 
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX
@@ -59,8 +62,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {
         const vertices = shape[0]
+        const meta     = shape[1]
         if (!vertices || vertices.length < 3) continue
-        const [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
+        let [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
+        if (meta?.penrose) [fill, stroke] = meta.thick ? PENROSE_THICK : PENROSE_THIN
         ctx.beginPath()
         ctx.moveTo(vertices[0][0], vertices[0][1])
         for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
@@ -123,12 +128,16 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.width = W
     canvas.height = H
 
-    try {
-      const data = toShapes({ configuration, width: W, height: H, shapeSize })
-      shapesRef.current = data?.shapes ?? []
-    } catch (err) {
-      console.error('Failed to generate tiling:', err)
-      shapesRef.current = []
+    if (configuration === 'penrose') {
+      shapesRef.current = generatePenrose(W, H)
+    } else {
+      try {
+        const data = toShapes({ configuration, width: W, height: H, shapeSize })
+        shapesRef.current = data?.shapes ?? []
+      } catch (err) {
+        console.error('Failed to generate tiling:', err)
+        shapesRef.current = []
+      }
     }
 
     transformRef.current = { x: 0, y: 0, scale: 1 }
