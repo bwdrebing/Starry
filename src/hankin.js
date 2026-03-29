@@ -54,7 +54,11 @@ function rayExitPolygon(origin, dir, vertices) {
 // Builds per-edge ray pairs. For edge i:
 //   left ray  — origin offset toward edge i-1's corner, direction = rotate(normal, +theta)
 //   right ray — origin offset toward edge i+1's corner, direction = rotate(normal, -theta)
-function makeEdgeRays(vertices, theta, delta) {
+//
+// thetaAt is a function (x, y) => theta evaluated at each edge's midpoint.
+// This ensures that two tiles sharing an edge always use the same theta for that
+// edge, eliminating cross-tile angular discontinuities.
+function makeEdgeRays(vertices, thetaAt, delta) {
   const n = vertices.length
   const c = centroid(vertices)
   const edges = []
@@ -67,6 +71,7 @@ function makeEdgeRays(vertices, theta, delta) {
     let normal = rotate2D(edgeDir, Math.PI / 2)
     if (dot2D(normal, sub2D(c, mid)) < 0) normal = [-normal[0], -normal[1]]
 
+    const edgeTheta = thetaAt(mid[0], mid[1])
     const offset = delta * edgeLen * 0.5
     // oLeft is offset toward vertex[i] (shared corner with edge i-1)
     // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
@@ -74,8 +79,8 @@ function makeEdgeRays(vertices, theta, delta) {
     const oRight = add2D(mid, scale2D(edgeDir, offset))
 
     edges.push({
-      left:  { origin: oLeft,  dir: rotate2D(normal, +theta) },
-      right: { origin: oRight, dir: rotate2D(normal, -theta) },
+      left:  { origin: oLeft,  dir: rotate2D(normal, +edgeTheta) },
+      right: { origin: oRight, dir: rotate2D(normal, -edgeTheta) },
     })
   }
   return edges
@@ -125,65 +130,67 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
   if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
 }
 
+// Builds a thetaAt(x, y) function for the given parquet settings.
+// Bounds are derived from all shape vertices so edge midpoints always fall
+// within the normalised [0, 1] range.
+function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed) {
+  if (parquetDirection === 'none') return () => theta
+
+  const lerp = w => thetaMin + Math.max(0, Math.min(1, w)) * (thetaMax - thetaMin)
+
+  // Collect spatial bounds from all vertices (covers the full canvas extent).
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, maxR = 0
+  for (const shape of shapes) {
+    const raw = shape[0]
+    if (!raw) continue
+    for (const [x, y] of raw) {
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+      const r = Math.sqrt(x * x + y * y)
+      if (r > maxR) maxR = r
+    }
+  }
+  const rangeX = maxX - minX || 1e-8
+  const rangeY = maxY - minY || 1e-8
+  maxR = maxR || 1e-8
+
+  if (parquetDirection === 'ltr') {
+    return (x, _y) => lerp((x - minX) / rangeX)
+  }
+  if (parquetDirection === 'btt') {
+    return (_x, y) => lerp((maxY - y) / rangeY)
+  }
+  if (parquetDirection === 'centered') {
+    return (x, y) => lerp(Math.sqrt(x * x + y * y) / maxR)
+  }
+  if (parquetDirection === 'fn') {
+    const t = time * speed
+    if (parquetFunction === 'wave-ltr') {
+      return (x, _y) => lerp((Math.sin(((x - minX) / rangeX) * Math.PI * 5 - t * 1.5) + 1) / 2)
+    }
+    if (parquetFunction === 'wave-btt') {
+      return (_x, y) => lerp((Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - t * 1.5) + 1) / 2)
+    }
+    if (parquetFunction === 'ripple') {
+      return (x, y) => lerp((Math.sin((Math.sqrt(x * x + y * y) / maxR) * Math.PI * 6 - t * 2) + 1) / 2)
+    }
+    if (parquetFunction === 'pulse') {
+      const w = (Math.sin(t * 2) + 1) / 2
+      return () => lerp(w)
+    }
+  }
+  return () => theta
+}
+
 export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1) {
   const allUnder = [], allOver = []
 
-  // Pre-compute per-shape interpolation weights for parquet deformation
-  let shapeWeights = null
-  if (parquetDirection === 'centered') {
-    const dists = shapes.map(shape => {
-      const raw = shape[0]
-      if (!raw || raw.length < 3) return 0
-      const c = centroid(raw)
-      return Math.sqrt(c[0] * c[0] + c[1] * c[1])
-    })
-    const maxDist = Math.max(...dists, 1e-8)
-    shapeWeights = dists.map(d => d / maxDist)
-  } else if (parquetDirection === 'ltr') {
-    const xs = shapes.map(shape => {
-      const raw = shape[0]
-      if (!raw || raw.length < 3) return 0
-      return centroid(raw)[0]
-    })
-    const minX = Math.min(...xs), maxX = Math.max(...xs)
-    const rangeX = maxX - minX || 1e-8
-    shapeWeights = xs.map(x => (x - minX) / rangeX)
-  } else if (parquetDirection === 'btt') {
-    const ys = shapes.map(shape => {
-      const raw = shape[0]
-      if (!raw || raw.length < 3) return 0
-      return centroid(raw)[1]
-    })
-    const minY = Math.min(...ys), maxY = Math.max(...ys)
-    const rangeY = maxY - minY || 1e-8
-    // canvas y increases downward, so invert: bottom (high y) → weight 0, top (low y) → weight 1
-    shapeWeights = ys.map(y => (maxY - y) / rangeY)
-  } else if (parquetDirection === 'fn') {
-    const centroids = shapes.map(shape => {
-      const raw = shape[0]
-      if (!raw || raw.length < 3) return [0, 0]
-      return centroid(raw)
-    })
-    const t = time * speed
-    if (parquetFunction === 'wave-ltr') {
-      const xs = centroids.map(c => c[0])
-      const minX = Math.min(...xs), maxX = Math.max(...xs)
-      const rangeX = maxX - minX || 1e-8
-      shapeWeights = xs.map(x => (Math.sin(((x - minX) / rangeX) * Math.PI * 5 - t * 1.5) + 1) / 2)
-    } else if (parquetFunction === 'wave-btt') {
-      const ys = centroids.map(c => c[1])
-      const minY = Math.min(...ys), maxY = Math.max(...ys)
-      const rangeY = maxY - minY || 1e-8
-      shapeWeights = ys.map(y => (Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - t * 1.5) + 1) / 2)
-    } else if (parquetFunction === 'ripple') {
-      const dists = centroids.map(c => Math.sqrt(c[0] * c[0] + c[1] * c[1]))
-      const maxDist = Math.max(...dists, 1e-8)
-      shapeWeights = dists.map(d => (Math.sin((d / maxDist) * Math.PI * 6 - t * 2) + 1) / 2)
-    } else if (parquetFunction === 'pulse') {
-      const w = (Math.sin(t * 2) + 1) / 2
-      shapeWeights = shapes.map(() => w)
-    }
-  }
+  // Build a position→theta mapping. Edge midpoints are used as the sample point
+  // so that both tiles sharing an edge compute the same theta, giving seamless
+  // continuity across tile boundaries.
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed)
 
   for (let si = 0; si < shapes.length; si++) {
     const shape = shapes[si]
@@ -192,14 +199,14 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
-    const shapeTheta = shapeWeights
-      ? thetaMin + shapeWeights[si] * (thetaMax - thetaMin)
-      : theta
-
+    // For the thick-band delta offset, sample theta at the shape centroid.
+    // This affects band width (not ray direction) and is a good per-shape approximation.
+    const [cx, cy] = centroid(vertices)
+    const shapeTheta = thetaAt(cx, cy)
     const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0
     const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
 
-    const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, shapeTheta, d))
+    const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, thetaAt, d))
     const sp = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
         const j = (i + 1) % n
@@ -265,73 +272,20 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   }
 
   if (debug) {
-    // Re-compute per-shape weights for debug point rendering
-    let shapeWeights = null
-    if (parquetDirection === 'centered') {
-      const dists = shapes.map(shape => {
-        const raw = shape[0]; if (!raw || raw.length < 3) return 0
-        const c = centroid(raw); return Math.sqrt(c[0] * c[0] + c[1] * c[1])
-      })
-      const maxDist = Math.max(...dists, 1e-8)
-      shapeWeights = dists.map(d => d / maxDist)
-    } else if (parquetDirection === 'ltr') {
-      const xs = shapes.map(shape => {
-        const raw = shape[0]; if (!raw || raw.length < 3) return 0
-        return centroid(raw)[0]
-      })
-      const minX = Math.min(...xs), maxX = Math.max(...xs)
-      const rangeX = maxX - minX || 1e-8
-      shapeWeights = xs.map(x => (x - minX) / rangeX)
-    } else if (parquetDirection === 'btt') {
-      const ys = shapes.map(shape => {
-        const raw = shape[0]; if (!raw || raw.length < 3) return 0
-        return centroid(raw)[1]
-      })
-      const minY = Math.min(...ys), maxY = Math.max(...ys)
-      const rangeY = maxY - minY || 1e-8
-      shapeWeights = ys.map(y => (maxY - y) / rangeY)
-    } else if (parquetDirection === 'fn') {
-      const cs = shapes.map(shape => {
-        const raw = shape[0]; if (!raw || raw.length < 3) return [0, 0]
-        return centroid(raw)
-      })
-      const t = time * speed
-      if (parquetFunction === 'wave-ltr') {
-        const xs = cs.map(c => c[0])
-        const minX = Math.min(...xs), maxX = Math.max(...xs)
-        const rangeX = maxX - minX || 1e-8
-        shapeWeights = xs.map(x => (Math.sin(((x - minX) / rangeX) * Math.PI * 5 - t * 1.5) + 1) / 2)
-      } else if (parquetFunction === 'wave-btt') {
-        const ys = cs.map(c => c[1])
-        const minY = Math.min(...ys), maxY = Math.max(...ys)
-        const rangeY = maxY - minY || 1e-8
-        shapeWeights = ys.map(y => (Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - t * 1.5) + 1) / 2)
-      } else if (parquetFunction === 'ripple') {
-        const dists = cs.map(c => Math.sqrt(c[0] * c[0] + c[1] * c[1]))
-        const maxDist = Math.max(...dists, 1e-8)
-        shapeWeights = dists.map(d => (Math.sin((d / maxDist) * Math.PI * 6 - t * 2) + 1) / 2)
-      } else if (parquetFunction === 'pulse') {
-        const w = (Math.sin(t * 2) + 1) / 2
-        shapeWeights = shapes.map(() => w)
-      }
-    }
-
+    const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed)
     const debugPts = []
-    for (let si = 0; si < shapes.length; si++) {
-      const shape = shapes[si]
+    for (const shape of shapes) {
       const raw = shape[0]
       if (!raw || raw.length < 3) continue
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
-      const shapeTheta = shapeWeights
-        ? thetaMin + shapeWeights[si] * (thetaMax - thetaMin)
-        : theta
-
+      const [cx, cy] = centroid(vertices)
+      const shapeTheta = thetaAt(cx, cy)
       const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0
       const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
 
-      const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, shapeTheta, d))
+      const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, thetaAt, d))
       const sp = allEdgeRays.map(edges =>
         Array.from({ length: n }, (_, i) => {
           const j = (i + 1) % n
