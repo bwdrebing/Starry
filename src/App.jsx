@@ -69,8 +69,6 @@ export default function App() {
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
-  const [overlap, setOverlap] = useState(false)
-  const [overlapGap, setOverlapGap] = useState(0.05)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
 
   return (
@@ -91,8 +89,8 @@ export default function App() {
           debug={debug}
           thick={thick}
           bandWidth={bandWidth}
-          overlap={overlap}
-          overlapGap={overlapGap}
+          overlap={thick}
+          overlapGap={0}
           showMotif={showMotif}
           parquetFunction={parquetFunction}
           animSpeed={animSpeed}
@@ -336,43 +334,17 @@ export default function App() {
             </div>
 
             {thick && (
-              <>
-                <div className="control-group">
-                  <label htmlFor="bandwidth-slider">Width</label>
-                  <input
-                    id="bandwidth-slider"
-                    type="range"
-                    min={0.01} max={0.5} step={0.01}
-                    value={bandWidth}
-                    onChange={e => setBandWidth(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{bandWidth.toFixed(2)}</span>
-                </div>
-
-                <div className="control-group">
-                  <label htmlFor="overlap-check">Overlap</label>
-                  <input
-                    id="overlap-check"
-                    type="checkbox"
-                    checked={overlap}
-                    onChange={e => setOverlap(e.target.checked)}
-                  />
-                </div>
-
-                {overlap && (
-                  <div className="control-group">
-                    <label htmlFor="gap-slider">Gap</label>
-                    <input
-                      id="gap-slider"
-                      type="range"
-                      min={0} max={0.3} step={0.005}
-                      value={overlapGap}
-                      onChange={e => setOverlapGap(Number(e.target.value))}
-                    />
-                    <span className="slider-value">{overlapGap.toFixed(3)}</span>
-                  </div>
-                )}
-              </>
+              <div className="control-group">
+                <label htmlFor="bandwidth-slider">Width</label>
+                <input
+                  id="bandwidth-slider"
+                  type="range"
+                  min={0.01} max={0.5} step={0.01}
+                  value={bandWidth}
+                  onChange={e => setBandWidth(Number(e.target.value))}
+                />
+                <span className="slider-value">{bandWidth.toFixed(2)}</span>
+              </div>
             )}
 
             <div className="shelf-divider" />
