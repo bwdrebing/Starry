@@ -51,39 +51,48 @@ function rayExitPolygon(origin, dir, vertices) {
   return minT < Infinity ? [origin[0] + dir[0] * minT, origin[1] + dir[1] * minT] : null
 }
 
-// Builds per-edge ray pairs. For edge i:
-//   left ray  — origin offset toward edge i-1's corner, direction = rotate(normal, +theta)
-//   right ray — origin offset toward edge i+1's corner, direction = rotate(normal, -theta)
+// Builds per-edge ray pairs, returning an array of edge-ray variants:
+//   one variant for non-thick mode, two (inner + outer band) for thick mode.
 //
 // thetaAt is a function (x, y) => theta evaluated at each edge's midpoint.
-// This ensures that two tiles sharing an edge always use the same theta for that
-// edge, eliminating cross-tile angular discontinuities.
-function makeEdgeRays(vertices, thetaAt, delta) {
+// halfThickDelta is also computed per-edge from thetaAt(mid) so that both tiles
+// sharing an edge use the same band offsets, keeping thick-band lines continuous
+// across tile boundaries.
+function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) {
   const n = vertices.length
   const c = centroid(vertices)
-  const edges = []
 
-  for (let i = 0; i < n; i++) {
-    const a = vertices[i], b = vertices[(i + 1) % n]
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    const edgeDir = norm2D(sub2D(b, a))
-    const edgeLen = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
-    let normal = rotate2D(edgeDir, Math.PI / 2)
-    if (dot2D(normal, sub2D(c, mid)) < 0) normal = [-normal[0], -normal[1]]
+  // Build one array of edge-ray objects for a given per-edge delta function.
+  const buildVariant = (deltaForEdge) => {
+    const edges = []
+    for (let i = 0; i < n; i++) {
+      const a = vertices[i], b = vertices[(i + 1) % n]
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+      const edgeDir = norm2D(sub2D(b, a))
+      const edgeLen = Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+      let normal = rotate2D(edgeDir, Math.PI / 2)
+      if (dot2D(normal, sub2D(c, mid)) < 0) normal = [-normal[0], -normal[1]]
 
-    const edgeTheta = thetaAt(mid[0], mid[1])
-    const offset = delta * edgeLen * 0.5
-    // oLeft is offset toward vertex[i] (shared corner with edge i-1)
-    // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
-    const oLeft = sub2D(mid, scale2D(edgeDir, offset))
-    const oRight = add2D(mid, scale2D(edgeDir, offset))
+      const edgeTheta = thetaAt(mid[0], mid[1])
+      const offset = deltaForEdge(edgeTheta) * edgeLen * 0.5
+      // oLeft is offset toward vertex[i] (shared corner with edge i-1)
+      // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
+      const oLeft = sub2D(mid, scale2D(edgeDir, offset))
+      const oRight = add2D(mid, scale2D(edgeDir, offset))
 
-    edges.push({
-      left:  { origin: oLeft,  dir: rotate2D(normal, +edgeTheta) },
-      right: { origin: oRight, dir: rotate2D(normal, -edgeTheta) },
-    })
+      edges.push({
+        left:  { origin: oLeft,  dir: rotate2D(normal, +edgeTheta) },
+        right: { origin: oRight, dir: rotate2D(normal, -edgeTheta) },
+      })
+    }
+    return edges
   }
-  return edges
+
+  if (!thick) return [buildVariant(() => delta)]
+  return [
+    buildVariant(et => delta - Math.min(2, bandWidth / Math.cos(et))),
+    buildVariant(et => delta + Math.min(2, bandWidth / Math.cos(et))),
+  ]
 }
 
 // Returns a copy of vertices guaranteed to be in clockwise order.
@@ -199,14 +208,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
-    // For the thick-band delta offset, sample theta at the shape centroid.
-    // This affects band width (not ray direction) and is a good per-shape approximation.
-    const [cx, cy] = centroid(vertices)
-    const shapeTheta = thetaAt(cx, cy)
-    const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0
-    const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
-
-    const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, thetaAt, d))
+    const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
     const sp = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
         const j = (i + 1) % n
@@ -280,12 +282,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
-      const [cx, cy] = centroid(vertices)
-      const shapeTheta = thetaAt(cx, cy)
-      const halfThickDelta = thick ? Math.min(2, bandWidth / Math.cos(shapeTheta)) : 0
-      const deltas = thick ? [delta - halfThickDelta, delta + halfThickDelta] : [delta]
-
-      const allEdgeRays = deltas.map(d => makeEdgeRays(vertices, thetaAt, d))
+      const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
       const sp = allEdgeRays.map(edges =>
         Array.from({ length: n }, (_, i) => {
           const j = (i + 1) % n
@@ -295,7 +292,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
         })
       )
       for (let i = 0; i < n; i++)
-        for (let di = 0; di < deltas.length; di++)
+        for (let di = 0; di < allEdgeRays.length; di++)
           if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
     }
     const r = 3 / (ctx.getTransform?.().a ?? 1)
