@@ -306,7 +306,10 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
 
   if (debug) {
     const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed)
-    const debugPts = []
+    const r = 3 / (ctx.getTransform?.().a ?? 1)
+    ctx.save()
+    ctx.lineWidth = 1 / (ctx.getTransform?.().a ?? 1)
+
     for (const shape of shapes) {
       const raw = shape[0]
       if (!raw || raw.length < 3) continue
@@ -314,8 +317,9 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const n = vertices.length
 
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
-      const sp = allEdgeRays.map(edges =>
-        Array.from({ length: n }, (_, i) => {
+      for (let di = 0; di < allEdgeRays.length; di++) {
+        const edges = allEdgeRays[di]
+        for (let i = 0; i < n; i++) {
           const j = (i + 1) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
@@ -325,16 +329,22 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
           const mid = useMid
             ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
             : null
-          return { endA: (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
-        })
-      )
-      for (let i = 0; i < n; i++)
-        for (let di = 0; di < allEdgeRays.length; di++)
-          if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
+          const endA = (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices)
+          const endB = (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayB.origin, rayB.dir, vertices)
+          if (!endA || !endB) continue
+
+          const hue = (i / n) * 360
+          const lightness = di === 0 ? 55 : 75
+          const color = `hsl(${hue}, 90%, ${lightness}%)`
+          ctx.strokeStyle = color
+          ctx.fillStyle = color
+
+          ctx.beginPath(); ctx.moveTo(rayA.origin[0], rayA.origin[1]); ctx.lineTo(endA[0], endA[1]); ctx.stroke()
+          ctx.beginPath(); ctx.moveTo(rayB.origin[0], rayB.origin[1]); ctx.lineTo(endB[0], endB[1]); ctx.stroke()
+          ctx.beginPath(); ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2); ctx.fill()
+        }
+      }
     }
-    const r = 3 / (ctx.getTransform?.().a ?? 1)
-    ctx.save(); ctx.fillStyle = 'red'
-    for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
     ctx.restore()
   }
 }
