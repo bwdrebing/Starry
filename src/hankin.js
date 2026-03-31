@@ -108,19 +108,33 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-// Returns the t parameter (along segment a→b) where line a→b crosses segment c→d.
-// t is NOT clamped — it can be < 0 or > 1. Returns null if c→d is not crossed
-// within its own extent [0,1] (with a small tolerance).
+// Returns an array of t parameters (along segment a→b) for occlusion by segment c→d.
+// Normal case: one t where the lines cross (only if crossing is within c→d's extent).
+// Collinear case: two t values [t0, t1] bracketing the projected overlap of c→d onto a→b.
+// Returns [] when c→d neither crosses nor overlaps a→b.
+// t values are NOT clamped — caller clamps to [0,1].
 function bandCrossParam(a, b, c, d) {
   const dab = [b[0] - a[0], b[1] - a[1]]
   const dcd = [d[0] - c[0], d[1] - c[1]]
   const denom = cross2D(dab, dcd)
-  if (Math.abs(denom) < 1e-10) return null
+  if (Math.abs(denom) < 1e-10) {
+    // Parallel — check if collinear (perpendicular distance ≈ 0)
+    const lenAB2 = dab[0] ** 2 + dab[1] ** 2
+    if (lenAB2 < 1e-10) return []
+    const perp = Math.abs(cross2D(sub2D(c, a), dab)) / Math.sqrt(lenAB2)
+    if (perp > 1e-4) return []
+    // Collinear: project c and d onto a→b as t parameters and return the overlap interval
+    const tc = dot2D(sub2D(c, a), dab) / lenAB2
+    const td = dot2D(sub2D(d, a), dab) / lenAB2
+    const t0 = Math.min(tc, td), t1 = Math.max(tc, td)
+    if (t1 - t0 < 1e-6) return []
+    return [t0, t1]
+  }
   const diff = sub2D(c, a)
   const t = cross2D(diff, dcd) / denom
   const s = cross2D(diff, dab) / denom
-  if (s < -1e-4 || s > 1 + 1e-4) return null   // crossing is outside B+'s segment extent
-  return t                                        // t may be outside [0,1] — caller clamps
+  if (s < -1e-4 || s > 1 + 1e-4) return []      // crossing is outside c→d's extent
+  return [t]                                       // t may be outside [0,1] — caller clamps
 }
 
 // Pushes sub-segments of origin→end into segs, with the band gap [tGapStart, tGapEnd]
@@ -244,8 +258,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
       for (const bm of bminus) {
         if (overlap && thick) {
           const ts = bplus
-            .map(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
-            .filter(t => t !== null)
+            .flatMap(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
           if (ts.length >= 2) {
