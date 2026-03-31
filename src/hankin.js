@@ -228,9 +228,13 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         const j = (i + 1) % n
         const rayA = edges[i].left, rayB = edges[j].right
         const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
+        const mid = parallel
+          ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+          : null
         return {
-          endA: pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
-          endB: pt ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
+          endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
+          endB: pt ?? mid ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
         }
       })
     )
@@ -301,7 +305,11 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
           const j = (i + 1) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
-          return { endA: pt ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
+          const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
+          const mid = parallel
+            ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+            : null
+          return { endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
         })
       )
       for (let i = 0; i < n; i++)
