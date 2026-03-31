@@ -34,6 +34,18 @@ function rayIntersect(o1, d1, o2, d2) {
   return [t, s, add2D(o1, scale2D(d1, t))]
 }
 
+// Ray-casting point-in-polygon test.
+function pointInPolygon([px, py], vertices) {
+  const n = vertices.length
+  let inside = false
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = vertices[i], [xj, yj] = vertices[j]
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+      inside = !inside
+  }
+  return inside
+}
+
 // Returns the point where a ray (origin + t*dir, t > 0) first exits the polygon.
 function rayExitPolygon(origin, dir, vertices) {
   const n = vertices.length
@@ -228,13 +240,15 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         const j = (i + 1) % n
         const rayA = edges[i].left, rayB = edges[j].right
         const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const ptInside = pt && pointInPolygon(pt, vertices)
         const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
-        const mid = parallel
+        const useMid = parallel || (pt && !ptInside)
+        const mid = useMid
           ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
           : null
         return {
-          endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
-          endB: pt ?? mid ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
+          endA: (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
+          endB: (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
         }
       })
     )
@@ -305,11 +319,13 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
           const j = (i + 1) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+          const ptInside = pt && pointInPolygon(pt, vertices)
           const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
-          const mid = parallel
+          const useMid = parallel || (pt && !ptInside)
+          const mid = useMid
             ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
             : null
-          return { endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
+          return { endA: (ptInside ? pt : null) ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
         })
       )
       for (let i = 0; i < n; i++)
