@@ -269,12 +269,15 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     // Occlusion pass: band(i+1) goes over band(i); within a band, overSegs go over underSegs.
     for (let i = 0; i < n; i++) {
       const { overSegs, underSegs, edgeLen } = bands[i]
-      const nextAll = [...bands[(i + 1) % n].overSegs, ...bands[(i + 1) % n].underSegs]
+      const adjAll = [
+        ...bands[(i + 1) % n].overSegs, ...bands[(i + 1) % n].underSegs,
+        ...bands[(i - 1 + n) % n].overSegs, ...bands[(i - 1 + n) % n].underSegs,
+      ]
       const extraGap = overlapGap * edgeLen
 
       for (const seg of underSegs) {
         if (overlap && thick) {
-          const ts = [...overSegs, ...nextAll]
+          const ts = [...overSegs, ...adjAll]
             .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
@@ -288,7 +291,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
 
       for (const seg of overSegs) {
         if (overlap && thick) {
-          const ts = nextAll
+          const ts = adjAll
             .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
