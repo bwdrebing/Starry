@@ -246,16 +246,22 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
       })
     )
 
+    // First pass: collect all bplus (over) segments for this polygon.
+    const polyBplus = []
     for (let i = 0; i < n; i++) {
-      const prev = (i - 1 + n) % n
-      const va = vertices[i], vb = vertices[(i + 1) % n]
-      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-
       const bplus = allEdgeRays.map((edges, di) => {
         const ray = edges[i].left
         const end = sp[di][i].endA
         return end ? { origin: ray.origin, dir: ray.dir, end } : null
       }).filter(Boolean)
+      for (const seg of bplus) { polyBplus.push(seg); allOver.push([seg.origin, seg.end]) }
+    }
+
+    // Second pass: check each bminus (under) segment against ALL bplus in the polygon.
+    for (let i = 0; i < n; i++) {
+      const prev = (i - 1 + n) % n
+      const va = vertices[i], vb = vertices[(i + 1) % n]
+      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
 
       const bminus = allEdgeRays.map((edges, di) => {
         const ray = edges[i].right
@@ -263,12 +269,10 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         return end ? { origin: ray.origin, dir: ray.dir, end } : null
       }).filter(Boolean)
 
-      for (const seg of bplus) allOver.push([seg.origin, seg.end])
-
       const extraGap = overlapGap * edgeLen
       for (const bm of bminus) {
         if (overlap && thick) {
-          const ts = bplus
+          const ts = polyBplus
             .flatMap(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
