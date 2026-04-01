@@ -269,12 +269,16 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     // Occlusion pass: band(i+1) goes over band(i); within a band, overSegs go over underSegs.
     for (let i = 0; i < n; i++) {
       const { overSegs, underSegs, edgeLen } = bands[i]
+      // Extend nextAll segments to the polygon boundary so bandCrossParam finds crossings
+      // even when band(i+1)'s star point is closer to edge i+1 than band(i)'s star point.
       const nextAll = [...bands[(i + 1) % n].overSegs, ...bands[(i + 1) % n].underSegs]
+        .map(seg => ({ ...seg, end: rayExitPolygon(seg.origin, seg.dir, vertices) ?? seg.end }))
       const extraGap = overlapGap * edgeLen
 
+      const extOverSegs = overSegs.map(seg => ({ ...seg, end: rayExitPolygon(seg.origin, seg.dir, vertices) ?? seg.end }))
       for (const seg of underSegs) {
         if (overlap && thick) {
-          const ts = [...overSegs, ...nextAll]
+          const ts = [...extOverSegs, ...nextAll]
             .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
