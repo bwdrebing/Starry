@@ -246,61 +246,67 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
       })
     )
 
-    // Build per-band intermediate geometry.
-    // band[i] covers the region between edge i and edge i+1:
-    //   overSegs = di=0 (outer) rays of both A+ and B-
-    //   underSegs = di=1 (inner) rays of both A+ and B- (thick only)
+    // Build per-band geometry. aSegs = A+ rays (left ray of edge i, origin on edge i).
+    // bSegs = B- rays (right ray of edge i+1, origin on edge i+1).
     const bands = Array.from({ length: n }, (_, i) => {
       const j = (i + 1) % n
       const va = vertices[i], vb = vertices[j]
       const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-      const overSegs = [], underSegs = []
+      const aSegs = [], bSegs = []
       for (let di = 0; di < allEdgeRays.length; di++) {
-        const rayA = allEdgeRays[di][i].left
-        const rayB = allEdgeRays[di][j].right
-        const endA = sp[di][i].endA, endB = sp[di][i].endB
-        const target = (thick && di > 0) ? underSegs : overSegs
-        if (endA) target.push({ origin: rayA.origin, dir: rayA.dir, end: endA })
-        if (endB) target.push({ origin: rayB.origin, dir: rayB.dir, end: endB })
+        const end = sp[di][i].endA
+        aSegs.push({ origin: allEdgeRays[di][i].left.origin,  dir: allEdgeRays[di][i].left.dir,  end })
+        bSegs.push({ origin: allEdgeRays[di][j].right.origin, dir: allEdgeRays[di][j].right.dir, end })
       }
-      return { overSegs, underSegs, edgeLen }
+      return { aSegs, bSegs, edgeLen }
     })
 
-    // Occlusion pass: band(i+1) goes over band(i); within a band, overSegs go over underSegs.
+    // Draw each band clipped by band(i+1) (clockwise-next goes on top).
+    // A+ segments go from edge i toward M — they pass behind band(i+1) at their END,
+    // so draw from origin to the first crossing with band(i+1).
+    // B- segments go from edge i+1 toward M — they start behind band(i+1) (same edge),
+    // so draw from the last crossing with band(i+1) to M.
+    const lerpPt = (seg, t) => [
+      seg.origin[0] + t * (seg.end[0] - seg.origin[0]),
+      seg.origin[1] + t * (seg.end[1] - seg.origin[1]),
+    ]
+    const segLen = seg => Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
+
     for (let i = 0; i < n; i++) {
-      const { overSegs, underSegs, edgeLen } = bands[i]
-      // Extend nextAll segments to the polygon boundary so bandCrossParam finds crossings
-      // even when band(i+1)'s star point is closer to edge i+1 than band(i)'s star point.
-      const nextAll = [...bands[(i + 1) % n].overSegs, ...bands[(i + 1) % n].underSegs]
-        .map(seg => ({ ...seg, end: rayExitPolygon(seg.origin, seg.dir, vertices) ?? seg.end }))
+      const { aSegs, bSegs, edgeLen } = bands[i]
+      const nextSegs = [...bands[(i + 1) % n].aSegs, ...bands[(i + 1) % n].bSegs]
       const extraGap = overlapGap * edgeLen
 
-      const extOverSegs = overSegs.map(seg => ({ ...seg, end: rayExitPolygon(seg.origin, seg.dir, vertices) ?? seg.end }))
-      for (const seg of underSegs) {
+      const crossings = seg => nextSegs
+        .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+        .map(t => Math.max(0, Math.min(1, t)))
+        .sort((a, b) => a - b)
+
+      for (const seg of aSegs) {
         if (overlap && thick) {
-          const ts = [...extOverSegs, ...nextAll]
-            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
-            .map(t => Math.max(0, Math.min(1, t)))
-            .sort((a, b) => a - b)
-          ts.length >= 2
-            ? pushWithBandGap(allUnder, seg.origin, seg.end, seg.dir, ts[0], ts[ts.length - 1], extraGap)
-            : allUnder.push([seg.origin, seg.end])
+          const ts = crossings(seg)
+          if (ts.length > 0) {
+            const tCut = Math.max(0, ts[0] - extraGap / segLen(seg))
+            if (tCut > 1e-6) allOver.push([seg.origin, lerpPt(seg, tCut)])
+          } else {
+            allOver.push([seg.origin, seg.end])
+          }
         } else {
-          allUnder.push([seg.origin, seg.end])
+          allOver.push([seg.origin, seg.end])
         }
       }
 
-      for (const seg of overSegs) {
+      for (const seg of bSegs) {
         if (overlap && thick) {
-          const ts = nextAll
-            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
-            .map(t => Math.max(0, Math.min(1, t)))
-            .sort((a, b) => a - b)
-          ts.length >= 2
-            ? pushWithBandGap(allOver, seg.origin, seg.end, seg.dir, ts[0], ts[ts.length - 1], extraGap)
-            : allOver.push([seg.origin, seg.end])
+          const ts = crossings(seg)
+          if (ts.length > 0) {
+            const tCut = Math.min(1, ts[ts.length - 1] + extraGap / segLen(seg))
+            if (tCut < 1 - 1e-6) allUnder.push([lerpPt(seg, tCut), seg.end])
+          } else {
+            allUnder.push([seg.origin, seg.end])
+          }
         } else {
-          allOver.push([seg.origin, seg.end])
+          allUnder.push([seg.origin, seg.end])
         }
       }
     }
