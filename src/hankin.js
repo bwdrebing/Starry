@@ -246,43 +246,57 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
       })
     )
 
-    // First pass: collect all bplus (over) segments for this polygon.
-    const polyBplus = []
-    for (let i = 0; i < n; i++) {
-      const bplus = allEdgeRays.map((edges, di) => {
-        const ray = edges[i].left
-        const end = sp[di][i].endA
-        return end ? { origin: ray.origin, dir: ray.dir, end } : null
-      }).filter(Boolean)
-      for (const seg of bplus) { polyBplus.push(seg); allOver.push([seg.origin, seg.end]) }
-    }
-
-    // Second pass: check each bminus (under) segment against ALL bplus in the polygon.
-    for (let i = 0; i < n; i++) {
-      const prev = (i - 1 + n) % n
-      const va = vertices[i], vb = vertices[(i + 1) % n]
+    // Build per-band intermediate geometry.
+    // band[i] covers the region between edge i and edge i+1:
+    //   overSegs = di=0 (outer) rays of both A+ and B-
+    //   underSegs = di=1 (inner) rays of both A+ and B- (thick only)
+    const bands = Array.from({ length: n }, (_, i) => {
+      const j = (i + 1) % n
+      const va = vertices[i], vb = vertices[j]
       const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
+      const overSegs = [], underSegs = []
+      for (let di = 0; di < allEdgeRays.length; di++) {
+        const rayA = allEdgeRays[di][i].left
+        const rayB = allEdgeRays[di][j].right
+        const endA = sp[di][i].endA, endB = sp[di][i].endB
+        const target = (thick && di > 0) ? underSegs : overSegs
+        if (endA) target.push({ origin: rayA.origin, dir: rayA.dir, end: endA })
+        if (endB) target.push({ origin: rayB.origin, dir: rayB.dir, end: endB })
+      }
+      return { overSegs, underSegs, edgeLen }
+    })
 
-      const bminus = allEdgeRays.map((edges, di) => {
-        const ray = edges[i].right
-        const end = sp[di][prev].endB
-        return end ? { origin: ray.origin, dir: ray.dir, end } : null
-      }).filter(Boolean)
-
+    // Occlusion pass: band(i+1) goes over band(i); within a band, overSegs go over underSegs.
+    for (let i = 0; i < n; i++) {
+      const { overSegs, underSegs, edgeLen } = bands[i]
+      const nextAll = [...bands[(i + 1) % n].overSegs, ...bands[(i + 1) % n].underSegs]
       const extraGap = overlapGap * edgeLen
-      for (const bm of bminus) {
+
+      for (const seg of underSegs) {
         if (overlap && thick) {
-          const ts = polyBplus
-            .flatMap(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
+          const ts = [...overSegs, ...nextAll]
+            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
             .map(t => Math.max(0, Math.min(1, t)))
             .sort((a, b) => a - b)
-          if (ts.length >= 2) {
-            pushWithBandGap(allUnder, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
-          } else {
-            allUnder.push([bm.origin, bm.end])
-          }
+          ts.length >= 2
+            ? pushWithBandGap(allUnder, seg.origin, seg.end, seg.dir, ts[0], ts[ts.length - 1], extraGap)
+            : allUnder.push([seg.origin, seg.end])
         } else {
-          allUnder.push([bm.origin, bm.end])
+          allUnder.push([seg.origin, seg.end])
+        }
+      }
+
+      for (const seg of overSegs) {
+        if (overlap && thick) {
+          const ts = nextAll
+            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+            .map(t => Math.max(0, Math.min(1, t)))
+            .sort((a, b) => a - b)
+          ts.length >= 2
+            ? pushWithBandGap(allOver, seg.origin, seg.end, seg.dir, ts[0], ts[ts.length - 1], extraGap)
+            : allOver.push([seg.origin, seg.end])
+        } else {
+          allOver.push([seg.origin, seg.end])
         }
       }
     }
