@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
+import MotifHelpOverlay from './MotifHelpOverlay'
 import './App.css'
 
 const TILINGS = [
@@ -67,13 +68,19 @@ export default function App() {
   const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
-  const [thick, setThick] = useState(false)
-  const [bandWidth, setBandWidth] = useState(0.2)
+  const [bandWidth, setBandWidth] = useState(0)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
+
+  const thick = bandWidth > 0
 
   return (
     <div className="app">
       <StarryCanvas />
+
+      {showHelp && <MotifHelpOverlay onClose={() => setShowHelp(false)} />}
+
+      <button className="help-btn" onClick={() => setShowHelp(true)} aria-label="How motifs work">?</button>
 
       <div className="canvas-layer">
         <AntwerpCanvas
@@ -324,28 +331,16 @@ export default function App() {
             </div>
 
             <div className="control-group">
-              <label htmlFor="thick-check">Thick</label>
+              <label htmlFor="bandwidth-slider">Width</label>
               <input
-                id="thick-check"
-                type="checkbox"
-                checked={thick}
-                onChange={e => setThick(e.target.checked)}
+                id="bandwidth-slider"
+                type="range"
+                min={0} max={0.5} step={0.01}
+                value={bandWidth}
+                onChange={e => setBandWidth(Number(e.target.value))}
               />
+              <span className="slider-value">{bandWidth.toFixed(2)}</span>
             </div>
-
-            {thick && (
-              <div className="control-group">
-                <label htmlFor="bandwidth-slider">Width</label>
-                <input
-                  id="bandwidth-slider"
-                  type="range"
-                  min={0.01} max={0.5} step={0.01}
-                  value={bandWidth}
-                  onChange={e => setBandWidth(Number(e.target.value))}
-                />
-                <span className="slider-value">{bandWidth.toFixed(2)}</span>
-              </div>
-            )}
 
             <div className="shelf-divider" />
 
