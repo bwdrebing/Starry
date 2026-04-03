@@ -18,10 +18,11 @@ const MULTIGRID_COLORS = [
   ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'],
 ]
 
-export default function TilingThumbnail({ configuration, size = 88 }) {
+export default function TilingThumbnail({ configuration, size = 88, render = true }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
+    if (!render) return
     const canvas = canvasRef.current
     if (!canvas) return
 
