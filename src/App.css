@@ -244,6 +244,185 @@
   border-color: rgba(255, 255, 255, 0.35);
 }
 
+/* Pattern picker button */
+.pattern-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  font-family: Georgia, serif;
+  cursor: pointer;
+  max-width: 220px;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pattern-picker-btn:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.pattern-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Tiling gallery overlay ──────────────────────────────────────────────── */
+
+.gallery-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(4, 4, 16, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.gallery-panel {
+  background: rgba(10, 10, 28, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 14px;
+  width: min(780px, 100%);
+  max-height: min(680px, 90vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.gallery-title {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.gallery-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.gallery-close:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.gallery-scroll {
+  overflow-y: auto;
+  flex: 1;
+  padding: 1rem 1.1rem 1.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+
+.gallery-scroll::-webkit-scrollbar { width: 5px; }
+.gallery-scroll::-webkit-scrollbar-track { background: transparent; }
+.gallery-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 3px;
+}
+
+.gallery-group {
+  margin-bottom: 1.4rem;
+}
+
+.gallery-group:last-child {
+  margin-bottom: 0;
+}
+
+.gallery-group-label {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.65rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+  padding-left: 2px;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.5rem;
+}
+
+.gallery-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0.4rem 0.4rem 0.35rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  transition: border-color 0.15s, background 0.15s;
+  overflow: hidden;
+}
+
+.gallery-item:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.gallery-item.selected {
+  border-color: rgba(200, 200, 255, 0.55);
+  background: rgba(200, 200, 255, 0.09);
+}
+
+.gallery-item canvas {
+  border-radius: 6px;
+  display: block;
+}
+
+.gallery-item-label {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.6rem;
+  font-family: Georgia, serif;
+  text-align: center;
+  line-height: 1.3;
+  word-break: break-word;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.gallery-item.selected .gallery-item-label {
+  color: rgba(200, 200, 255, 0.85);
+}
+
 /* Debug toggle */
 .debug-toggle {
   display: flex;

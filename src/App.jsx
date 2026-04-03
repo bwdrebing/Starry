@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
+import TilingGallery from './TilingGallery'
 import './App.css'
 
 const TILINGS = [
@@ -70,6 +71,7 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
+  const [galleryOpen, setGalleryOpen] = useState(false)
 
   return (
     <div className="app">
@@ -112,16 +114,13 @@ export default function App() {
           <div className="shelf-body-inner">
 
             <div className="control-group">
-              <label htmlFor="tiling-select">Pattern</label>
-              <select
-                id="tiling-select"
-                value={tilingIndex}
-                onChange={e => setTilingIndex(Number(e.target.value))}
-              >
-                {TILINGS.map((t, i) => (
-                  <option key={t.config} value={i}>{t.label}</option>
-                ))}
-              </select>
+              <label>Pattern</label>
+              <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
+                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '')}</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="2,4 5,7 8,4"/>
+                </svg>
+              </button>
             </div>
 
             <div className="control-group">
@@ -363,6 +362,15 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {galleryOpen && (
+        <TilingGallery
+          tilings={TILINGS}
+          selectedIndex={tilingIndex}
+          onSelect={setTilingIndex}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
     </div>
   )
 }
