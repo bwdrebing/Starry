@@ -282,33 +282,27 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         .map(t => Math.max(0, Math.min(1, t)))
         .sort((a, b) => a - b)
 
-      for (const seg of aSegs) {
-        if (overlap && thick) {
-          const ts = crossings(seg)
-          if (ts.length > 0) {
-            const tCut = Math.max(0, ts[0] - extraGap / segLen(seg))
-            if (tCut > 1e-6) allOver.push([seg.origin, lerpPt(seg, tCut)])
+      const process = (segs, list) => {
+        for (const seg of segs) {
+          if (overlap && thick) {
+            const ts = crossings(seg)
+            if (ts.length > 0) {
+              const g = extraGap / segLen(seg)
+              const t0 = Math.max(0, ts[0] - g)
+              const t1 = Math.min(1, ts[ts.length - 1] + g)
+              if (t0 > 1e-6)       list.push([seg.origin, lerpPt(seg, t0)])
+              if (t1 < 1 - 1e-6)  list.push([lerpPt(seg, t1), seg.end])
+            } else {
+              list.push([seg.origin, seg.end])
+            }
           } else {
-            allOver.push([seg.origin, seg.end])
+            list.push([seg.origin, seg.end])
           }
-        } else {
-          allOver.push([seg.origin, seg.end])
         }
       }
 
-      for (const seg of bSegs) {
-        if (overlap && thick) {
-          const ts = crossings(seg)
-          if (ts.length > 0) {
-            const tCut = Math.min(1, ts[ts.length - 1] + extraGap / segLen(seg))
-            if (tCut < 1 - 1e-6) allUnder.push([lerpPt(seg, tCut), seg.end])
-          } else {
-            allUnder.push([seg.origin, seg.end])
-          }
-        } else {
-          allUnder.push([seg.origin, seg.end])
-        }
-      }
+      process(aSegs, allOver)
+      process(bSegs, allUnder)
     }
   }
 
