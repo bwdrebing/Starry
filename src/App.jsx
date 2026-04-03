@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
+import TilingGallery from './TilingGallery'
 import './App.css'
 
 const TILINGS = [
@@ -34,7 +35,6 @@ const TILINGS = [
   { label: '3-Uniform: 3⁶; (3².4.3.4)²',                 config: '3-4-3,3/m30/m(h2)' },
   { label: '3-Uniform: [3³.4²; (4⁴)²]¹',                 config: '4-4-4-3/m90/r(h4)' },
   { label: '3-Uniform: [(3³.4²)²; 4⁴]¹',                 config: '4-4-3-3-4/m90/r(h10)/r(c3)' },
-  { label: '3-Uniform: [(3⁶)²; 3³.4²]¹',                 config: '4-3-3-3-3-3/m90/r(h3)' },
   { label: '3-Uniform: [(3⁶)²; 3³.4²]²',                 config: '4-3-3-3-3/m90/r(h2)/m(h22)' },
   { label: '3-Uniform: (3.4.6.4)²; 3.4².6',              config: '6-4-3,4-6,3/m30/r(c2)' },
   // ── 3-Uniform (3 vertex types) ───────────────────────────────────────────
@@ -43,7 +43,6 @@ const TILINGS = [
   { label: '3-Uniform: 3⁶; 3².4.3.4; 3.4².6',            config: '3-4-3,4-6/m30/r(c5)' },
   { label: '3-Uniform: 3⁶; 3³.4²; 3².4.3.4',             config: '3-4-3-3/m30/r(h6)' },
   { label: '3-Uniform: 3⁶; 3³.4²; 3.4.6.4',              config: '6-4-3,4-3,3/m30/r(c5)' },
-  { label: '3-Uniform: [3⁶; 3³.4²; 4⁴]¹',                config: '4-4-3-3/m90/r(h7)/r(v1)' },
   { label: '3-Uniform: [3⁶; 3³.4²; 4⁴]²',                config: '4-4-3-3-3/m90/r(h9)/r(h3)' },
   { label: '3-Uniform: [3⁶; 3⁴.6; 3².6²]³',              config: '6-3-3/m90/r(h2)' },
   { label: '3-Uniform: [3⁶; 3⁴.6; 3.6.3.6]³',            config: '3-3-6/r60/r(v4)' },
@@ -70,6 +69,7 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
+  const [galleryOpen, setGalleryOpen] = useState(false)
 
   return (
     <div className="app">
@@ -112,16 +112,13 @@ export default function App() {
           <div className="shelf-body-inner">
 
             <div className="control-group">
-              <label htmlFor="tiling-select">Pattern</label>
-              <select
-                id="tiling-select"
-                value={tilingIndex}
-                onChange={e => setTilingIndex(Number(e.target.value))}
-              >
-                {TILINGS.map((t, i) => (
-                  <option key={t.config} value={i}>{t.label}</option>
-                ))}
-              </select>
+              <label>Pattern</label>
+              <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
+                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '')}</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="2,4 5,7 8,4"/>
+                </svg>
+              </button>
             </div>
 
             <div className="control-group">
@@ -363,6 +360,15 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {galleryOpen && (
+        <TilingGallery
+          tilings={TILINGS}
+          selectedIndex={tilingIndex}
+          onSelect={setTilingIndex}
+          onClose={() => setGalleryOpen(false)}
+        />
+      )}
     </div>
   )
 }
