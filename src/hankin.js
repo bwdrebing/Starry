@@ -34,6 +34,18 @@ function rayIntersect(o1, d1, o2, d2) {
   return [t, s, add2D(o1, scale2D(d1, t))]
 }
 
+// Ray-casting point-in-polygon test.
+function pointInPolygon([px, py], vertices) {
+  const n = vertices.length
+  let inside = false
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const [xi, yi] = vertices[i], [xj, yj] = vertices[j]
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+      inside = !inside
+  }
+  return inside
+}
+
 // Returns the point where a ray (origin + t*dir, t > 0) first exits the polygon.
 function rayExitPolygon(origin, dir, vertices) {
   const n = vertices.length
@@ -228,52 +240,69 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         const j = (i + 1) % n
         const rayA = edges[i].left, rayB = edges[j].right
         const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
-        const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
-        const mid = parallel
-          ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-          : null
-        return {
-          endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices),
-          endB: pt ?? mid ?? rayExitPolygon(rayB.origin, rayB.dir, vertices),
-        }
+        const ptInside = pt && pointInPolygon(pt, vertices)
+        const end = ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+        return { endA: end, endB: end }
       })
     )
 
-    for (let i = 0; i < n; i++) {
-      const prev = (i - 1 + n) % n
-      const va = vertices[i], vb = vertices[(i + 1) % n]
+    // Build per-band geometry. aSegs = A+ rays (left ray of edge i, origin on edge i).
+    // bSegs = B- rays (right ray of edge i+1, origin on edge i+1).
+    const bands = Array.from({ length: n }, (_, i) => {
+      const j = (i + 1) % n
+      const va = vertices[i], vb = vertices[j]
       const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-
-      const bplus = allEdgeRays.map((edges, di) => {
-        const ray = edges[i].left
+      const aSegs = [], bSegs = []
+      for (let di = 0; di < allEdgeRays.length; di++) {
         const end = sp[di][i].endA
-        return end ? { origin: ray.origin, dir: ray.dir, end } : null
-      }).filter(Boolean)
+        aSegs.push({ origin: allEdgeRays[di][i].left.origin,  dir: allEdgeRays[di][i].left.dir,  end })
+        bSegs.push({ origin: allEdgeRays[di][j].right.origin, dir: allEdgeRays[di][j].right.dir, end })
+      }
+      return { aSegs, bSegs, edgeLen }
+    })
 
-      const bminus = allEdgeRays.map((edges, di) => {
-        const ray = edges[i].right
-        const end = sp[di][prev].endB
-        return end ? { origin: ray.origin, dir: ray.dir, end } : null
-      }).filter(Boolean)
+    // Draw each band clipped by band(i+1) (clockwise-next goes on top).
+    // A+ segments go from edge i toward M — they pass behind band(i+1) at their END,
+    // so draw from origin to the first crossing with band(i+1).
+    // B- segments go from edge i+1 toward M — they start behind band(i+1) (same edge),
+    // so draw from the last crossing with band(i+1) to M.
+    const lerpPt = (seg, t) => [
+      seg.origin[0] + t * (seg.end[0] - seg.origin[0]),
+      seg.origin[1] + t * (seg.end[1] - seg.origin[1]),
+    ]
+    const segLen = seg => Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
 
-      for (const seg of bplus) allOver.push([seg.origin, seg.end])
-
+    for (let i = 0; i < n; i++) {
+      const { aSegs, bSegs, edgeLen } = bands[i]
+      const nextSegs = [...bands[(i + 1) % n].aSegs, ...bands[(i + 1) % n].bSegs]
       const extraGap = overlapGap * edgeLen
-      for (const bm of bminus) {
-        if (overlap && thick) {
-          const ts = bplus
-            .flatMap(bp => bandCrossParam(bm.origin, bm.end, bp.origin, bp.end))
-            .map(t => Math.max(0, Math.min(1, t)))
-            .sort((a, b) => a - b)
-          if (ts.length >= 2) {
-            pushWithBandGap(allUnder, bm.origin, bm.end, bm.dir, ts[0], ts[ts.length - 1], extraGap)
+
+      const crossings = seg => nextSegs
+        .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+        .map(t => Math.max(0, Math.min(1, t)))
+        .sort((a, b) => a - b)
+
+      const process = (segs, list) => {
+        for (const seg of segs) {
+          if (overlap && thick) {
+            const ts = crossings(seg)
+            if (ts.length > 0) {
+              const g = extraGap / segLen(seg)
+              const t0 = Math.max(0, ts[0] - g)
+              const t1 = Math.min(1, ts[ts.length - 1] + g)
+              if (t0 > 1e-6)       list.push([seg.origin, lerpPt(seg, t0)])
+              if (t1 < 1 - 1e-6)  list.push([lerpPt(seg, t1), seg.end])
+            } else {
+              list.push([seg.origin, seg.end])
+            }
           } else {
-            allUnder.push([bm.origin, bm.end])
+            list.push([seg.origin, seg.end])
           }
-        } else {
-          allUnder.push([bm.origin, bm.end])
         }
       }
+
+      process(aSegs, allOver)
+      process(bSegs, allUnder)
     }
   }
 
@@ -292,7 +321,10 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
 
   if (debug) {
     const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed)
-    const debugPts = []
+    const r = 3 / (ctx.getTransform?.().a ?? 1)
+    ctx.save()
+    ctx.lineWidth = 1 / (ctx.getTransform?.().a ?? 1)
+
     for (const shape of shapes) {
       const raw = shape[0]
       if (!raw || raw.length < 3) continue
@@ -300,25 +332,29 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const n = vertices.length
 
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
-      const sp = allEdgeRays.map(edges =>
-        Array.from({ length: n }, (_, i) => {
+      for (let di = 0; di < allEdgeRays.length; di++) {
+        const edges = allEdgeRays[di]
+        for (let i = 0; i < n; i++) {
           const j = (i + 1) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
-          const parallel = !pt && Math.abs(cross2D(rayA.dir, rayB.dir)) < 1e-6
-          const mid = parallel
-            ? [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-            : null
-          return { endA: pt ?? mid ?? rayExitPolygon(rayA.origin, rayA.dir, vertices) }
-        })
-      )
-      for (let i = 0; i < n; i++)
-        for (let di = 0; di < allEdgeRays.length; di++)
-          if (sp[di][i].endA) debugPts.push(sp[di][i].endA)
+          const ptInside = pt && pointInPolygon(pt, vertices)
+          const end = ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+          const endA = end, endB = end
+          if (!endA || !endB) continue
+
+          const hue = (i / n) * 360
+          const lightness = di === 0 ? 55 : 75
+          const color = `hsl(${hue}, 90%, ${lightness}%)`
+          ctx.strokeStyle = color
+          ctx.fillStyle = color
+
+          ctx.beginPath(); ctx.moveTo(rayA.origin[0], rayA.origin[1]); ctx.lineTo(endA[0], endA[1]); ctx.stroke()
+          ctx.beginPath(); ctx.moveTo(rayB.origin[0], rayB.origin[1]); ctx.lineTo(endB[0], endB[1]); ctx.stroke()
+          ctx.beginPath(); ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2); ctx.fill()
+        }
+      }
     }
-    const r = 3 / (ctx.getTransform?.().a ?? 1)
-    ctx.save(); ctx.fillStyle = 'red'
-    for (const [x, y] of debugPts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill() }
     ctx.restore()
   }
 }
