@@ -68,7 +68,7 @@ export default function TilingGallery({ tilings, selectedIndex, onSelect, onClos
                       onClick={() => { onSelect(index); onClose() }}
                       title={label}
                     >
-                      <TilingThumbnail configuration={config} size={88} render={index < 8} />
+                      <TilingThumbnail configuration={config} size={88} />
                       <span className="gallery-item-label">{shortLabel(label)}</span>
                     </button>
                   ))}

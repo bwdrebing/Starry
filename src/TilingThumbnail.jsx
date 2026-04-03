@@ -18,11 +18,10 @@ const MULTIGRID_COLORS = [
   ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'],
 ]
 
-export default function TilingThumbnail({ configuration, size = 88, render = true }) {
+export default function TilingThumbnail({ configuration, size = 88 }) {
   const canvasRef = useRef(null)
 
   useEffect(() => {
-    if (!render) return
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -35,7 +34,7 @@ export default function TilingThumbnail({ configuration, size = 88, render = tru
       shapes = generateMultigrid(size, size, sym)
     } else {
       try {
-        const data = toShapes({ configuration, width: size, height: size, shapeSize: 16 })
+        const data = toShapes({ configuration, width: size, height: size, shapeSize: 32 })
         shapes = data?.shapes ?? []
       } catch {
         return
