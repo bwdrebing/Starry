@@ -51,6 +51,8 @@ const TILINGS = [
   { label: 'Quasi-periodic: 5-fold (Penrose P3)',          config: 'penrose' },
   { label: 'Quasi-periodic: 7-fold',                       config: 'penrose7' },
   { label: 'Quasi-periodic: 8-fold (Ammann-Beenker)',      config: 'penrose8' },
+  // ── Truchet ─────────────────────────────────────────────────────────────────
+  { label: 'Truchet: Triangular',                          config: 'truchet' },
 ]
 
 export default function App() {
@@ -114,7 +116,7 @@ export default function App() {
             <div className="control-group">
               <label>Pattern</label>
               <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
-                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '')}</span>
+                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '').replace(/^Truchet:\s*/, '')}</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="2,4 5,7 8,4"/>
                 </svg>
