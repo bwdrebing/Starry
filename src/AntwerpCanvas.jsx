@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
-import { generateTruchetTiling, drawTruchetShapes, TRUCHET_BG } from './truchet'
+import { generateTruchetTiling, drawTruchetShapes } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -89,10 +89,6 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ctx.clearRect(0, 0, W, H)
 
     const isTruchet = shapesRef.current[0]?.[1]?.truchet === true
-    if (isTruchet) {
-      ctx.fillStyle = TRUCHET_BG
-      ctx.fillRect(0, 0, W, H)
-    }
 
     ctx.save()
     ctx.translate(W / 2 + x, H / 2 + y)

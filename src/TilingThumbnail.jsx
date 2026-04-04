@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { generateMultigrid } from './penrose'
-import { generateTruchetTiling, drawTruchetShapes, TRUCHET_BG } from './truchet'
+import { generateTruchetTiling, drawTruchetShapes } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.25)', 'rgba(255,107, 87,0.85)'],
@@ -36,8 +36,6 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
 
     if (configuration === 'truchet') {
       const shapes = generateTruchetTiling(size, size)
-      ctx.fillStyle = TRUCHET_BG
-      ctx.fillRect(-size / 2, -size / 2, size, size)
       drawTruchetShapes(ctx, shapes)
       ctx.restore()
       return

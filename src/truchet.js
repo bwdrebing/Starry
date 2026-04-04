@@ -47,9 +47,7 @@ function splitTri({ pts, orient, lineCount }) {
   ]
 }
 
-// Dark background colour used for arc fills.  Must match what AntwerpCanvas
-// paints behind the truchet drawing so occluded arcs are truly hidden.
-export const TRUCHET_BG = 'rgb(8, 8, 20)'
+
 
 // Generate the full triangular truchet tiling centred at the canvas origin.
 // Returns an array of Starry shape pairs: [vertices, metadata].
@@ -133,16 +131,16 @@ export function generateTruchetTiling(W, H) {
   })
 }
 
-// Draw all truchet shapes onto ctx.
-// The canvas must already be filled with TRUCHET_BG so that the arc segment
-// fills (which use that same colour) correctly occlude underlying arcs.
+// Draw all truchet shapes onto ctx as stroked arcs only — no fills.
+// Matches the Hankin motif style: lines on a transparent background.
 export function drawTruchetShapes(ctx, shapes, strokeColor = 'rgba(255,255,255,0.85)') {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
     const { orient, lineSpacing, weight, n, arcCount3, startPt } = meta
 
-    ctx.lineWidth = weight
-    ctx.lineCap   = 'round'
+    ctx.lineWidth   = weight
+    ctx.lineCap     = 'round'
+    ctx.strokeStyle = strokeColor
 
     for (let i = 0; i < 3; i++) {
       const vi       = (startPt + i) % 3
@@ -152,19 +150,8 @@ export function drawTruchetShapes(ctx, shapes, strokeColor = 'rgba(255,255,255,0
 
       for (let j = 0; j < count; j++) {
         const r = (count - j) * lineSpacing
-
-        // Fill the circular segment (arc + chord) with background colour so
-        // this arc occludes arcs from adjacent triangles behind it.
         ctx.beginPath()
         ctx.arc(vx, vy, r, a1, a2)
-        ctx.closePath()
-        ctx.fillStyle = TRUCHET_BG
-        ctx.fill()
-
-        // Stroke just the arc curve (no chord)
-        ctx.beginPath()
-        ctx.arc(vx, vy, r, a1, a2)
-        ctx.strokeStyle = strokeColor
         ctx.stroke()
       }
 
