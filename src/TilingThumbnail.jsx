@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { generateMultigrid } from './penrose'
+import { generateTruchetTiling, drawTruchetShapes } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.25)', 'rgba(255,107, 87,0.85)'],
@@ -28,6 +29,18 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
     canvas.width = size
     canvas.height = size
 
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, size, size)
+    ctx.save()
+    ctx.translate(size / 2, size / 2)
+
+    if (configuration === 'truchet') {
+      const shapes = generateTruchetTiling(size, size)
+      drawTruchetShapes(ctx, shapes)
+      ctx.restore()
+      return
+    }
+
     let shapes = []
     if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
@@ -37,14 +50,10 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
         const data = toShapes({ configuration, width: size, height: size, shapeSize: 32 })
         shapes = data?.shapes ?? []
       } catch {
+        ctx.restore()
         return
       }
     }
-
-    const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, size, size)
-    ctx.save()
-    ctx.translate(size / 2, size / 2)
 
     for (const shape of shapes) {
       const vertices = shape[0]

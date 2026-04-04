@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
+import { generateTruchetTiling, drawTruchetShapes } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -86,11 +87,29 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     const currentMode = modeRef.current
 
     ctx.clearRect(0, 0, W, H)
+
+    const isTruchet = shapesRef.current[0]?.[1]?.truchet === true
+
     ctx.save()
     ctx.translate(W / 2 + x, H / 2 + y)
     ctx.scale(scale, scale)
 
-    if (currentMode === 'tiling') {
+    if (isTruchet) {
+      if (showMotifRef.current) {
+        drawTruchetShapes(ctx, shapesRef.current)
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+        ctx.lineWidth = 1 / scale
+        for (const [pts] of shapesRef.current) {
+          if (!pts || pts.length < 3) continue
+          ctx.beginPath()
+          ctx.moveTo(pts[0][0], pts[0][1])
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+          ctx.closePath()
+          ctx.stroke()
+        }
+      }
+    } else if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {
         const vertices = shape[0]
         const meta     = shape[1]
@@ -178,7 +197,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.width = W
     canvas.height = H
 
-    if (configuration.startsWith('penrose')) {
+    if (configuration === 'truchet') {
+      allShapesRef.current = generateTruchetTiling(W, H)
+    } else if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
       allShapesRef.current = generateMultigrid(W, H, sym)
     } else {
@@ -265,6 +286,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     exportSVG() {
       const canvas = canvasRef.current
       if (!canvas) return
+      if (shapesRef.current[0]?.[1]?.truchet) return  // SVG export not supported for Truchet mode
       const W = canvas.width
       const H = canvas.height
       const { x, y, scale } = transformRef.current
