@@ -131,8 +131,60 @@ export function generateTruchetTiling(W, H) {
   })
 }
 
+// Clip arc [a1, a2] (drawn clockwise) to only the portion OUTSIDE the disc
+// defined by (discCenter, discR).  arcCenter / arcR define the arc circle.
+//
+// A point on the arc at angle θ lies outside the disc when:
+//   d · cos(θ − φ) > K′   where φ = atan2(arcCenter−discCenter), K′ = (R²−d²−r²)/(2r)
+//
+// Returns null (entirely inside), [a1, a2] (entirely outside),
+// or a clipped [start, end] sub-arc.
+function clipArcOutsideDisc(arcCenter, arcR, a1, a2, discCenter, discR) {
+  const dx = arcCenter[0] - discCenter[0]
+  const dy = arcCenter[1] - discCenter[1]
+  const d  = Math.hypot(dx, dy)
+  if (d < 1e-10) return null
+
+  const Kp    = (discR * discR - d * d - arcR * arcR) / (2 * arcR)
+  const ratio = Kp / d
+
+  if (ratio >=  1 - 1e-9) return null        // arc entirely inside disc
+  if (ratio <= -1 + 1e-9) return [a1, a2]   // arc entirely outside disc
+
+  const phi   = Math.atan2(dy, dx)
+  const alpha = Math.acos(Math.max(-1, Math.min(1, ratio)))
+
+  // tEnter: angle at which the arc crosses FROM inside → outside (as θ increases)
+  // tExit:  angle at which the arc crosses FROM outside → inside
+  const tEnter = phi - alpha
+  const tExit  = phi + alpha
+
+  // Normalise a crossing angle to [a1, a1 + 2π)
+  const TAU  = 2 * Math.PI
+  const norm = t => { const dt = (((t - a1) % TAU) + TAU) % TAU; return a1 + dt }
+
+  const nEnter = norm(tEnter)
+  const nExit  = norm(tExit)
+  const enterIn = nEnter < a2
+  const exitIn  = nExit  < a2
+
+  if (!enterIn && !exitIn) {
+    // No crossings inside the arc range — check the midpoint
+    const mid = (a1 + a2) / 2
+    const ex  = arcCenter[0] + arcR * Math.cos(mid) - discCenter[0]
+    const ey  = arcCenter[1] + arcR * Math.sin(mid) - discCenter[1]
+    return Math.hypot(ex, ey) > discR ? [a1, a2] : null
+  }
+  if ( enterIn && !exitIn) return [nEnter, a2]    // outside from nEnter → end
+  if (!enterIn &&  exitIn) return [a1, nExit]      // outside from start → nExit
+  return [nEnter, nExit]                            // outside in the middle
+}
+
 // Draw all truchet shapes onto ctx as stroked arcs only — no fills.
-// Matches the Hankin motif style: lines on a transparent background.
+// Stacking order: vertex i=0 is the "top" disc (arcs drawn in full, edge to
+// edge).  Vertex i=1 is clipped at i=0's disc boundary.  Vertex i=2 is
+// clipped at i=1's disc boundary.  This produces the stacked-disc occlusion
+// illusion with just line strokes, matching the Hankin motif style.
 export function drawTruchetShapes(ctx, shapes, strokeColor = 'rgba(255,255,255,0.85)') {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
@@ -142,16 +194,33 @@ export function drawTruchetShapes(ctx, shapes, strokeColor = 'rgba(255,255,255,0
     ctx.lineCap     = 'round'
     ctx.strokeStyle = strokeColor
 
+    // Outer-arc disc radius (same for vertex i=0 and i=1, both have n arcs)
+    const discR = n * lineSpacing
+
     for (let i = 0; i < 3; i++) {
       const vi       = (startPt + i) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const count    = i < 2 ? n : arcCount3
 
+      // Which earlier vertex's disc occludes this one?
+      const clipPt = i === 1 ? pts[(startPt + 0) % 3]
+                   : i === 2 ? pts[(startPt + 1) % 3]
+                   : null  // i===0: top disc, draw fully
+
       for (let j = 0; j < count; j++) {
         const r = (count - j) * lineSpacing
+
+        let da1 = a1, da2 = a2
+        if (clipPt !== null) {
+          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, clipPt, discR)
+          if (clipped === null) continue
+          ;[da1, da2] = clipped
+        }
+        if (da2 - da1 < 1e-6) continue
+
         ctx.beginPath()
-        ctx.arc(vx, vy, r, a1, a2)
+        ctx.arc(vx, vy, r, da1, da2)
         ctx.stroke()
       }
 
