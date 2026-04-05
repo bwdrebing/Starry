@@ -178,6 +178,18 @@ export function generateTruchetTiling(W, H) {
     }
   })
 
+  // Build set of vertices that sit on an exposed edge (boundary vertices).
+  // Only the two vertices of each exposed edge are included — NOT the interior
+  // vertex of the boundary triangle — so adjacency detection is precise.
+  function vKey(p) { return `${Math.round(p[0]*100)},${Math.round(p[1]*100)}` }
+  const boundaryVerts = new Set()
+  largeTris.forEach(tri => {
+    if (!tri.boundary) return
+    const ei = tri.exposedEdge
+    boundaryVerts.add(vKey(tri.pts[ei]))
+    boundaryVerts.add(vKey(tri.pts[(ei + 1) % 3]))
+  })
+
   // Fisher-Yates shuffle of an array (in-place), returns it.
   function shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -199,8 +211,16 @@ export function generateTruchetTiling(W, H) {
     if (splitL.has(i)) {
       medTris.push(...splitTri(tri.pts, tri.orient))
     } else {
+      // For non-boundary triangles: check if exactly one vertex is on a boundary
+      // edge of the tiling.  If so, that vertex must be C (suppress its arcs).
+      let cornerVIdx = -1
+      if (!tri.boundary) {
+        let count = 0
+        tri.pts.forEach((p, vi) => { if (boundaryVerts.has(vKey(p))) { count++; cornerVIdx = vi } })
+        if (count !== 1) cornerVIdx = -1   // only act on the unambiguous case
+      }
       result.push({ pts: tri.pts, orient: tri.orient, size: 'large',
-                    boundary: tri.boundary, exposedEdge: tri.exposedEdge })
+                    boundary: tri.boundary, exposedEdge: tri.exposedEdge, cornerVIdx })
     }
   })
 
@@ -216,12 +236,17 @@ export function generateTruchetTiling(W, H) {
       result.push({ ...tri, size: 'medium' })
   })
 
-  return result.map(({ pts, orient, size, boundary, exposedEdge }) => {
+  return result.map(({ pts, orient, size, boundary, exposedEdge, cornerVIdx }) => {
     const arcCount = ARC_COUNT[size]
-    // Boundary triangles: A must be the interior vertex (not on the exposed edge).
-    // Edge ei connects pts[ei] and pts[(ei+1)%3], so the interior vertex is (ei+2)%3.
-    const startPt  = boundary ? (exposedEdge + 2) % 3 : Math.floor(Math.random() * 3)
-    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing, boundary: !!boundary }]
+    // Boundary triangles: A = interior vertex (not on exposed edge) → (ei+2)%3.
+    // Corner-vertex triangles: C = boundary vertex → startPt = (vi+1)%3.
+    // All others: random.
+    const startPt = boundary        ? (exposedEdge + 2) % 3
+                  : cornerVIdx >= 0 ? (cornerVIdx  + 1) % 3
+                  :                   Math.floor(Math.random() * 3)
+    const suppressC = cornerVIdx >= 0 && !boundary
+    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing,
+                   boundary: !!boundary, suppressC }]
   })
 }
 
@@ -234,7 +259,7 @@ export function generateTruchetTiling(W, H) {
 export function drawTruchetShapes(ctx, shapes) {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
-    const { orient, startPt, arcCount, lineSpacing, boundary } = meta
+    const { orient, startPt, arcCount, lineSpacing, boundary, suppressC } = meta
 
     ctx.lineCap = 'round'
 
@@ -273,7 +298,7 @@ export function drawTruchetShapes(ctx, shapes) {
     }
 
     // ── Vertex C: first 3 arcs only ────────────────────────────────────────
-    if (!boundary) {
+    if (!boundary && !suppressC) {
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
