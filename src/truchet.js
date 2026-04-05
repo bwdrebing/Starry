@@ -26,10 +26,13 @@ const ARC_ANGLES = [
   ],
 ]
 
-// Number of control points per edge (including the two corner endpoints)
-// for each size class.  Arc count per vertex = n − 2 (skip the corners).
-const SIZES = { large: 17, medium: 9, small: 5 }
-const SIZE_KEYS = Object.keys(SIZES)
+// Arc counts per size class (= n − 2, where n is control points per edge).
+// Because each subdivision halves the edge length and the denominator (n−1)
+// also halves, all three classes share the same absolute lineSpacing:
+//   large : triBase   / 16  (n=17, arcCount=15)
+//   medium: triBase/2 /  8  (n= 9, arcCount= 7) — same spacing
+//   small : triBase/4 /  4  (n= 5, arcCount= 3) — same spacing
+const ARC_COUNT = { large: 15, medium: 7, small: 3 }
 
 // ---------------------------------------------------------------------------
 // Clipping helper
@@ -87,31 +90,59 @@ function clipArcOutsideDisc(arcCenter, arcR, a1, a2, discCenter, discR) {
 // Tiling generation
 // ---------------------------------------------------------------------------
 
-// Generate the six triangles with pre-computed arc metadata.
-// Caller is responsible for setting ctx stroke style before drawing.
+// Split one triangle into four by midpoint subdivision.
+// The three corner sub-triangles keep the same orientation; the centre one flips.
+function splitTri(pts, orient) {
+  const [p0, p1, p2] = pts
+  const m01 = [(p0[0]+p1[0])/2, (p0[1]+p1[1])/2]
+  const m02 = [(p0[0]+p2[0])/2, (p0[1]+p2[1])/2]
+  const m12 = [(p2[0]+p1[0])/2, (p2[1]+p1[1])/2]
+  return [
+    { pts: [p0,  m01, m02], orient },
+    { pts: [m01, p1,  m12], orient },
+    { pts: [m02, m12, p2 ], orient },
+    { pts: [m02, m12, m01], orient: (orient + 1) % 2 },  // centre flips
+  ]
+}
+
+// Generate the tiling centred at the canvas origin.
+// All six base triangles are "large" (arcCount=15).  One is randomly chosen
+// to be subdivided into four "medium" triangles (arcCount=7).
+// Because the subdivision halves the edge and halves the arc spacing
+// denominator, all size classes share the same absolute lineSpacing (triBase/16),
+// so arcs from adjacent triangles of different sizes align at shared edges.
 export function generateTruchetTiling(W, H) {
-  const size    = Math.min(W, H)
-  const border  = size * 0.075
-  const triBase = (size - 2 * border) / 2
-  const triH    = SIN60 * triBase
+  const size        = Math.min(W, H)
+  const border      = size * 0.075
+  const triBase     = (size - 2 * border) / 2
+  const triH        = SIN60 * triBase
+  const lineSpacing = triBase / 16   // uniform across large / medium / small
 
   const sx = -triBase, sy = 0
-  const base = [
-    { pts: [[sx,            sy        ], [sx+triBase,         sy        ], [sx+triBase/2,      -triH]], orient: 0 },
-    { pts: [[sx+triBase/2, -triH      ], [sx+3*triBase/2,    -triH      ], [sx+triBase,         sy  ]], orient: 1 },
-    { pts: [[sx+triBase,   sy         ], [sx+2*triBase,       sy        ], [sx+3*triBase/2,    -triH]], orient: 0 },
-    { pts: [[sx,            sy        ], [sx+triBase,         sy        ], [sx+triBase/2,       triH]], orient: 1 },
-    { pts: [[sx+triBase/2,  triH      ], [sx+3*triBase/2,     triH      ], [sx+triBase,         sy  ]], orient: 0 },
-    { pts: [[sx+triBase,   sy         ], [sx+2*triBase,       sy        ], [sx+3*triBase/2,     triH]], orient: 1 },
+  let tris = [
+    { pts: [[sx,            sy   ], [sx+triBase,        sy   ], [sx+triBase/2,      -triH]], orient: 0 },
+    { pts: [[sx+triBase/2, -triH ], [sx+3*triBase/2,   -triH ], [sx+triBase,         sy  ]], orient: 1 },
+    { pts: [[sx+triBase,    sy   ], [sx+2*triBase,      sy   ], [sx+3*triBase/2,    -triH]], orient: 0 },
+    { pts: [[sx,            sy   ], [sx+triBase,        sy   ], [sx+triBase/2,       triH]], orient: 1 },
+    { pts: [[sx+triBase/2,  triH ], [sx+3*triBase/2,    triH ], [sx+triBase,         sy  ]], orient: 0 },
+    { pts: [[sx+triBase,    sy   ], [sx+2*triBase,      sy   ], [sx+3*triBase/2,     triH]], orient: 1 },
   ]
 
-  return base.map(({ pts, orient }) => {
-    const n           = SIZES[SIZE_KEYS[Math.floor(Math.random() * 3)]]
-    const arcCount    = n - 2                  // number of arcs per vertex (skip corners)
-    const lineSpacing = triBase / (n - 1)      // even spacing between control points
-    const startPt     = Math.floor(Math.random() * 3)  // which vertex is A
+  // Randomly subdivide one large triangle into four medium ones
+  const splitIdx = Math.floor(Math.random() * tris.length)
+  const { pts, orient } = tris[splitIdx]
+  tris = [
+    ...tris.slice(0, splitIdx),
+    ...splitTri(pts, orient),
+    ...tris.slice(splitIdx + 1),
+  ]
 
-    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing }]
+  // Assign size: the 4 medium replacements have arcCount=7; the rest are large (arcCount=15)
+  // The split index is where the 4 medium tiles begin (indices splitIdx..splitIdx+3).
+  return tris.map(({ pts: p, orient: o }, i) => {
+    const arcCount = (i >= splitIdx && i < splitIdx + 4) ? ARC_COUNT.medium : ARC_COUNT.large
+    const startPt  = Math.floor(Math.random() * 3)
+    return [p, { truchet: true, orient: o, startPt, arcCount, lineSpacing }]
   })
 }
 
