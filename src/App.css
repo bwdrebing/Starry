@@ -436,3 +436,59 @@
   user-select: none;
   padding: 0 0.4rem;
 }
+
+/* ── Truchet tile editor ─────────────────────────────────────────────────── */
+
+.rotate-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.76rem;
+  font-family: Georgia, serif;
+  padding: 0.28rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rotate-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.vertex-editor {
+  gap: 0.35rem;
+}
+
+.vertex-label {
+  color: rgba(200, 200, 255, 0.85);
+  font-size: 0.78rem;
+  font-family: Georgia, serif;
+  font-style: italic;
+  min-width: 1ch;
+}
+
+.suppress-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.68rem;
+  font-family: Georgia, serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.arc-range-input {
+  width: 60px;
+  height: 4px;
+  accent-color: rgba(200, 200, 255, 0.85);
+  cursor: pointer;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.arc-range-input:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

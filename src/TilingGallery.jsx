@@ -6,11 +6,14 @@ const GROUPS = [
   { label: '2-Uniform', prefix: '2-Uniform' },
   { label: '3-Uniform', prefix: '3-Uniform' },
   { label: 'Quasi-periodic', prefix: 'Quasi-periodic' },
+  { label: 'Truchet', prefix: 'Truchet' },
 ]
 
 function shortLabel(label) {
-  // Strip the "N-Uniform: " or "Quasi-periodic: " prefix for display
-  return label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '')
+  return label
+    .replace(/^\d+-Uniform:\s*/, '')
+    .replace(/^Quasi-periodic:\s*/, '')
+    .replace(/^Truchet:\s*/, '')
 }
 
 export default function TilingGallery({ tilings, selectedIndex, onSelect, onClose }) {

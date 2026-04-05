@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
+import { VERTEX_COLORS } from './truchet'
 import './App.css'
 
 const TILINGS = [
@@ -51,6 +52,8 @@ const TILINGS = [
   { label: 'Quasi-periodic: 5-fold (Penrose P3)',          config: 'penrose' },
   { label: 'Quasi-periodic: 7-fold',                       config: 'penrose7' },
   { label: 'Quasi-periodic: 8-fold (Ammann-Beenker)',      config: 'penrose8' },
+  // ── Truchet ─────────────────────────────────────────────────────────────────
+  { label: 'Truchet: Triangular',                          config: 'truchet' },
 ]
 
 export default function App() {
@@ -70,6 +73,16 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
+  const [selectedTileMeta, setSelectedTileMeta] = useState(null)
+
+  const isTruchet = TILINGS[tilingIndex].config === 'truchet'
+
+  function updateTileMeta(updates) {
+    if (selectedTileIdx < 0) return
+    canvasRef.current?.updateTileMeta(selectedTileIdx, updates)
+    setSelectedTileMeta(prev => ({ ...prev, ...updates }))
+  }
 
   return (
     <div className="app">
@@ -94,6 +107,11 @@ export default function App() {
           showMotif={showMotif}
           parquetFunction={parquetFunction}
           animSpeed={animSpeed}
+          onTileClick={(idx, meta) => {
+            setSelectedTileIdx(idx)
+            setSelectedTileMeta(meta)
+          }}
+          selectedTileIdx={selectedTileIdx}
         />
       </div>
 
@@ -114,7 +132,7 @@ export default function App() {
             <div className="control-group">
               <label>Pattern</label>
               <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
-                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '')}</span>
+                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '').replace(/^Truchet:\s*/, '')}</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="2,4 5,7 8,4"/>
                 </svg>
@@ -145,6 +163,10 @@ export default function App() {
               />
             </div>
 
+            <div className="shelf-divider" />
+
+            {!isTruchet && (
+              <>
             <div className="control-group">
               <label>Parquet</label>
               <div className="parquet-toggle">
@@ -305,9 +327,13 @@ export default function App() {
                 </div>
               </>
             )}
+              </>
+            )}
 
             <div className="shelf-divider" />
 
+            {!isTruchet && (
+              <>
             <div className="control-group">
               <label htmlFor="delta-slider">Delta</label>
               <input
@@ -345,6 +371,48 @@ export default function App() {
             )}
 
             <div className="shelf-divider" />
+              </>
+            )}
+
+            {isTruchet && selectedTileMeta && (() => {
+              const aCount = (selectedTileMeta.arcCount ?? 15) - 2
+              return (
+                <>
+                  <div className="control-group">
+                    <label>Tile</label>
+                    <button className="rotate-btn" onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 1) % 3 })}>
+                      ↻ Rotate
+                    </button>
+                  </div>
+                  {['A', 'B', 'C'].map((v, i) => {
+                    const sk = `suppress${v}`
+                    const rk = `arcRange${v}`
+                    const suppressed = !!selectedTileMeta[sk]
+                    const range = selectedTileMeta[rk] ?? [1, v === 'C' ? Math.min(3, aCount) : aCount]
+                    return (
+                      <div key={v} className="control-group vertex-editor">
+                        <span className="vertex-label" style={{ color: VERTEX_COLORS[i] }}>{v}</span>
+                        <label className="suppress-label">
+                          <input type="checkbox" checked={suppressed}
+                            onChange={e => updateTileMeta({ [sk]: e.target.checked })} />
+                          off
+                        </label>
+                        <input type="range" min={1} max={Math.max(1, range[1])} value={range[0]}
+                          disabled={suppressed}
+                          className="arc-range-input"
+                          onChange={e => updateTileMeta({ [rk]: [Number(e.target.value), range[1]] })} />
+                        <input type="range" min={Math.min(range[0], aCount)} max={aCount} value={range[1]}
+                          disabled={suppressed}
+                          className="arc-range-input"
+                          onChange={e => updateTileMeta({ [rk]: [range[0], Number(e.target.value)] })} />
+                        <span className="slider-value">{range[0]}–{range[1]}</span>
+                      </div>
+                    )
+                  })}
+                  <div className="shelf-divider" />
+                </>
+              )
+            })()}
 
             <div className="control-group">
               <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
