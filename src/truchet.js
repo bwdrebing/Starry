@@ -105,44 +105,78 @@ function splitTri(pts, orient) {
   ]
 }
 
-// Generate the tiling centred at the canvas origin.
-// All six base triangles are "large" (arcCount=15).  One is randomly chosen
-// to be subdivided into four "medium" triangles (arcCount=7).
-// Because the subdivision halves the edge and halves the arc spacing
-// denominator, all size classes share the same absolute lineSpacing (triBase/16),
-// so arcs from adjacent triangles of different sizes align at shared edges.
+// Generate a full-canvas triangular grid targeting ~20 large triangles.
+// triBase is chosen so that W*H ≈ 10 * triBase² * SIN60, giving ~20 tiles.
+// Some large triangles are randomly subdivided into medium (4 each), and some
+// medium into small (4 each).  All sizes share lineSpacing = triBase/16 so
+// arcs align at shared edges across different-size adjacent triangles.
 export function generateTruchetTiling(W, H) {
-  const size        = Math.min(W, H)
-  const border      = size * 0.075
-  const triBase     = (size - 2 * border) / 2
+  const triBase     = Math.sqrt(W * H / (10 * SIN60))
   const triH        = SIN60 * triBase
-  const lineSpacing = triBase / 16   // uniform across large / medium / small
+  const lineSpacing = triBase / 16
 
-  const sx = -triBase, sy = 0
-  let tris = [
-    { pts: [[sx,            sy   ], [sx+triBase,        sy   ], [sx+triBase/2,      -triH]], orient: 0 },
-    { pts: [[sx+triBase/2, -triH ], [sx+3*triBase/2,   -triH ], [sx+triBase,         sy  ]], orient: 1 },
-    { pts: [[sx+triBase,    sy   ], [sx+2*triBase,      sy   ], [sx+3*triBase/2,    -triH]], orient: 0 },
-    { pts: [[sx,            sy   ], [sx+triBase,        sy   ], [sx+triBase/2,       triH]], orient: 1 },
-    { pts: [[sx+triBase/2,  triH ], [sx+3*triBase/2,    triH ], [sx+triBase,         sy  ]], orient: 0 },
-    { pts: [[sx+triBase,    sy   ], [sx+2*triBase,      sy   ], [sx+3*triBase/2,     triH]], orient: 1 },
-  ]
+  const halfW = W / 2
+  const halfH = H / 2
+  const nRows = Math.ceil(halfH / triH) + 1
+  const nCols = Math.ceil(halfW / triBase) + 1
 
-  // Randomly subdivide one large triangle into four medium ones
-  const splitIdx = Math.floor(Math.random() * tris.length)
-  const { pts, orient } = tris[splitIdx]
-  tris = [
-    ...tris.slice(0, splitIdx),
-    ...splitTri(pts, orient),
-    ...tris.slice(splitIdx + 1),
-  ]
+  // Build the large-triangle grid.  Alternate rows are offset by triBase/2.
+  // orient 0 (▲): v0=BL, v1=BR, v2=top   — centroid at (x0+triBase/2, y0-triH/3)
+  // orient 1 (▽): v0=TL, v1=TR, v2=bottom — centroid at (x1,           y1+triH/3)
+  const largeTris = []
+  for (let r = -nRows; r <= nRows; r++) {
+    const y0   = r * triH
+    const y1   = (r - 1) * triH
+    const xOff = (((r % 2) + 2) % 2) * (triBase / 2)
 
-  // Assign size: the 4 medium replacements have arcCount=7; the rest are large (arcCount=15)
-  // The split index is where the 4 medium tiles begin (indices splitIdx..splitIdx+3).
-  return tris.map(({ pts: p, orient: o }, i) => {
-    const arcCount = (i >= splitIdx && i < splitIdx + 4) ? ARC_COUNT.medium : ARC_COUNT.large
+    for (let c = -nCols; c <= nCols; c++) {
+      const x0   = c * triBase + xOff
+      const x1   = x0 + triBase
+      const xMid = x0 + triBase / 2
+
+      if (Math.abs(x0 + triBase / 2) <= halfW && Math.abs(y0 - triH / 3) <= halfH)
+        largeTris.push({ pts: [[x0, y0], [x1, y0], [xMid, y1]], orient: 0 })
+
+      if (Math.abs(x1) <= halfW && Math.abs(y1 + triH / 3) <= halfH)
+        largeTris.push({ pts: [[xMid, y1], [xMid + triBase, y1], [x1, y0]], orient: 1 })
+    }
+  }
+
+  // Fisher-Yates shuffle of index array
+  function shuffled(n) {
+    const a = Array.from({ length: n }, (_, i) => i)
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+
+  // Subdivide ~30% of large triangles into 4 medium each
+  const nSplitL = Math.max(2, Math.round(largeTris.length * 0.3))
+  const splitL  = new Set(shuffled(largeTris.length).slice(0, nSplitL))
+  const medTris = []
+  const result  = []
+
+  largeTris.forEach((tri, i) => {
+    if (splitL.has(i)) medTris.push(...splitTri(tri.pts, tri.orient))
+    else result.push({ ...tri, size: 'large' })
+  })
+
+  // Subdivide ~25% of medium triangles into 4 small each
+  const nSplitM = Math.max(1, Math.round(medTris.length * 0.25))
+  const splitM  = new Set(shuffled(medTris.length).slice(0, nSplitM))
+
+  medTris.forEach((tri, i) => {
+    if (splitM.has(i))
+      splitTri(tri.pts, tri.orient).forEach(child => result.push({ ...child, size: 'small' }))
+    else result.push({ ...tri, size: 'medium' })
+  })
+
+  return result.map(({ pts, orient, size }) => {
+    const arcCount = ARC_COUNT[size]
     const startPt  = Math.floor(Math.random() * 3)
-    return [p, { truchet: true, orient: o, startPt, arcCount, lineSpacing }]
+    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing }]
   })
 }
 
