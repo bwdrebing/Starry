@@ -268,6 +268,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           type: 'pan',
           startX: e.touches[0].clientX - transformRef.current.x,
           startY: e.touches[0].clientY - transformRef.current.y,
+          startClientX: e.touches[0].clientX,
+          startClientY: e.touches[0].clientY,
+          moved: false,
         }
       } else if (e.touches.length === 2) {
         gestureRef.current = {
@@ -285,6 +288,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const g = gestureRef.current
       if (!g) return
       if (g.type === 'pan' && e.touches.length === 1) {
+        const ddx = e.touches[0].clientX - g.startClientX
+        const ddy = e.touches[0].clientY - g.startClientY
+        if (ddx * ddx + ddy * ddy > 64) g.moved = true  // >8px = pan, not tap
         transformRef.current.x = e.touches[0].clientX - g.startX
         transformRef.current.y = e.touches[0].clientY - g.startY
         draw()
@@ -300,7 +306,30 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       }
     }
 
-    function onTouchEnd() { gestureRef.current = null }
+    function onTouchEnd() {
+      const g = gestureRef.current
+      // A single-finger touch that didn't move is a tap → run hit test
+      if (g?.type === 'pan' && !g.moved && isTruchetRef.current) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect()
+          const cx = g.startClientX - rect.left
+          const cy = g.startClientY - rect.top
+          const { x, y, scale } = transformRef.current
+          const dx = (cx - canvas.width / 2 - x) / scale
+          const dy = (cy - canvas.height / 2 - y) / scale
+          for (const [pts, meta] of shapesRef.current) {
+            if (pts?.length >= 3 && pointInTri(dx, dy, pts)) {
+              onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
+              gestureRef.current = null
+              return
+            }
+          }
+          onTileClickRef.current?.(-1, null)
+        }
+      }
+      gestureRef.current = null
+    }
 
     function onWheel(e) {
       e.preventDefault()
