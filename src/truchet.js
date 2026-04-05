@@ -236,17 +236,26 @@ export function generateTruchetTiling(W, H) {
       result.push({ ...tri, size: 'medium' })
   })
 
-  return result.map(({ pts, orient, size, boundary, exposedEdge, cornerVIdx }) => {
-    const arcCount = ARC_COUNT[size]
-    // Boundary triangles: A = interior vertex (not on exposed edge) → (ei+2)%3.
-    // Corner-vertex triangles: C = boundary vertex → startPt = (vi+1)%3.
-    // All others: random.
-    const startPt = boundary        ? (exposedEdge + 2) % 3
-                  : cornerVIdx >= 0 ? (cornerVIdx  + 1) % 3
-                  :                   Math.floor(Math.random() * 3)
-    const suppressC = cornerVIdx >= 0 && !boundary
-    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing,
-                   boundary: !!boundary, suppressC }]
+  return result.map(({ pts, orient, size, boundary, exposedEdge, cornerVIdx }, i) => {
+    const arcCount  = ARC_COUNT[size]
+    const aCount    = arcCount - 2
+    const startPt   = boundary        ? (exposedEdge + 2) % 3
+                    : cornerVIdx >= 0 ? (cornerVIdx  + 1) % 3
+                    :                   Math.floor(Math.random() * 3)
+    const isBoundary = !!boundary
+    const isCorner   = cornerVIdx >= 0 && !boundary
+    return [pts, {
+      truchet:   true,
+      orient,    startPt, arcCount, lineSpacing,
+      boundary:  isBoundary,
+      suppressA: false,
+      suppressB: isBoundary,
+      suppressC: isBoundary || isCorner,
+      arcRangeA: [1, aCount],
+      arcRangeB: [1, aCount],
+      arcRangeC: [1, Math.min(3, aCount)],
+      _idx:      i,
+    }]
   })
 }
 
@@ -254,38 +263,38 @@ export function generateTruchetTiling(W, H) {
 // Drawing
 // ---------------------------------------------------------------------------
 
-// Draw truchet arcs.  The caller must set ctx.strokeStyle and ctx.lineWidth
-// before calling (use the same values as Hankin lines).
 export function drawTruchetShapes(ctx, shapes) {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
-    const { orient, startPt, arcCount, lineSpacing, boundary, suppressC } = meta
-
-    ctx.lineCap = 'round'
-
-    // A's disc radius = outermost arc circle, used to clip B
+    const { orient, startPt, arcCount, lineSpacing,
+            suppressA, suppressB, suppressC,
+            arcRangeA, arcRangeB, arcRangeC } = meta
     const aCount = arcCount - 2
     const discR  = aCount * lineSpacing
     const vA     = pts[(startPt + 0) % 3]
 
-    // ── Vertex A: full arcs, edge to edge (k=1 to arcCount-2) ─────────────
-    {
+    ctx.lineCap = 'round'
+
+    // ── Vertex A: full arcs ────────────────────────────────────────────────
+    if (!suppressA) {
       const vi       = (startPt + 0) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= aCount; k++) {
+      const [k0, k1] = arcRangeA ?? [1, aCount]
+      for (let k = k0; k <= k1; k++) {
         ctx.beginPath()
         ctx.arc(vx, vy, k * lineSpacing, a1, a2)
         ctx.stroke()
       }
     }
 
-    // ── Vertex B: same arc count as A, clipped at A's disc ────────────────
-    if (!boundary) {
+    // ── Vertex B: clipped at A's disc ─────────────────────────────────────
+    if (!suppressB) {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= aCount; k++) {
+      const [k0, k1] = arcRangeB ?? [1, aCount]
+      for (let k = k0; k <= k1; k++) {
         const r       = k * lineSpacing
         const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR)
         if (!clipped) continue
@@ -297,12 +306,13 @@ export function drawTruchetShapes(ctx, shapes) {
       }
     }
 
-    // ── Vertex C: first 3 arcs only ────────────────────────────────────────
-    if (!boundary && !suppressC) {
+    // ── Vertex C ──────────────────────────────────────────────────────────
+    if (!suppressC) {
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= 3; k++) {
+      const [k0, k1] = arcRangeC ?? [1, 3]
+      for (let k = k0; k <= k1; k++) {
         ctx.beginPath()
         ctx.arc(vx, vy, k * lineSpacing, a1, a2)
         ctx.stroke()

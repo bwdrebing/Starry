@@ -38,7 +38,14 @@ function touchCenter(touches) {
 function fmt(n) { return n.toFixed(4) }
 function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1 }, ref) {
+function pointInTri(px, py, [[ax, ay], [bx, by], [cx, cy]]) {
+  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by)
+  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy)
+  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay)
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
+}
+
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -59,6 +66,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const radiusRef = useRef(radius)
   const parquetFunctionRef = useRef(parquetFunction)
   const animSpeedRef = useRef(animSpeed)
+  const isTruchetRef        = useRef(false)
+  const selectedTileIdxRef  = useRef(-1)
+  const onTileClickRef      = useRef(onTileClick)
 
   // Filter allShapesRef by radius fraction and write result into shapesRef.
   const applyRadius = useCallback(() => {
@@ -89,6 +99,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ctx.clearRect(0, 0, W, H)
 
     const isTruchet = shapesRef.current[0]?.[1]?.truchet === true
+    isTruchetRef.current = isTruchet
 
     ctx.save()
     ctx.translate(W / 2 + x, H / 2 + y)
@@ -106,6 +117,23 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         ctx.closePath()
         ctx.stroke()
       }
+
+      // Highlight selected tile
+      const selIdx = selectedTileIdxRef.current
+      if (selIdx >= 0) {
+        const sel = allShapesRef.current[selIdx]
+        if (sel?.[0]?.length >= 3) {
+          const sp = sel[0]
+          ctx.strokeStyle = 'rgba(255,255,80,0.9)'
+          ctx.lineWidth = 2.5 / scale
+          ctx.beginPath()
+          ctx.moveTo(sp[0][0], sp[0][1])
+          for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i][0], sp[i][1])
+          ctx.closePath()
+          ctx.stroke()
+        }
+      }
+
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
@@ -187,6 +215,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     animId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animId)
   }, [parquetDirection, draw])
+
+  useEffect(() => {
+    onTileClickRef.current = onTileClick
+  }, [onTileClick])
+
+  useEffect(() => {
+    selectedTileIdxRef.current = selectedTileIdx
+    draw()
+  }, [selectedTileIdx, draw])
 
   // Recompute shapes and reset view when configuration changes
   useEffect(() => {
@@ -272,15 +309,36 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       draw()
     }
 
+    function onCanvasClick(e) {
+      if (!isTruchetRef.current) return
+      const rect = canvas.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      const { x, y, scale } = transformRef.current
+      const W = canvas.width
+      const H = canvas.height
+      const dx = (cx - W / 2 - x) / scale
+      const dy = (cy - H / 2 - y) / scale
+      for (const [pts, meta] of shapesRef.current) {
+        if (pts?.length >= 3 && pointInTri(dx, dy, pts)) {
+          onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
+          return
+        }
+      }
+      onTileClickRef.current?.(-1, null)
+    }
+
     canvas.addEventListener('touchstart', onTouchStart, { passive: false })
     canvas.addEventListener('touchmove', onTouchMove, { passive: false })
     canvas.addEventListener('touchend', onTouchEnd)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    canvas.addEventListener('click', onCanvasClick)
     return () => {
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)
       canvas.removeEventListener('touchend', onTouchEnd)
       canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('click', onCanvasClick)
     }
   }, [draw])
 
@@ -331,7 +389,16 @@ ${overPaths}
       a.download = 'starry-pattern.svg'
       a.click()
       URL.revokeObjectURL(url)
-    }
+    },
+    updateTileMeta(idx, updates) {
+      const shapes = allShapesRef.current
+      if (!shapes[idx]) return
+      Object.assign(shapes[idx][1], updates)
+      draw()
+    },
+    getTileMeta(idx) {
+      return allShapesRef.current[idx]?.[1] ?? null
+    },
   }))
 
   return (
