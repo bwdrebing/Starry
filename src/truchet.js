@@ -291,21 +291,32 @@ export function drawTruchetShapes(ctx, shapes) {
       }
     }
 
-    // ── Vertex B: clipped at A's disc ─────────────────────────────────────
+    // ── Vertex B: clipped at A's disc (or unclipped when disc ≥ edge) ────────
     if (!suppressB) {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const [k0, k1] = arcRangeB ?? [1, aCount]
+      // If discR ≥ distance(A,B), A's disc covers the whole triangle and
+      // clipArcOutsideDisc returns null for every B arc (they all point toward A).
+      // In that case draw B arcs unclipped so small-triangle B sliders still work.
+      const dAB      = Math.hypot(vx - vA[0], vy - vA[1])
+      const doClip   = discR < dAB - 1e-6
       for (let k = k0; k <= k1; k++) {
-        const r       = k * lineSpacing
-        const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR)
-        if (!clipped) continue
-        const [da1, da2] = clipped
-        if (da2 - da1 < 1e-6) continue
-        ctx.beginPath()
-        ctx.arc(vx, vy, r, da1, da2)
-        ctx.stroke()
+        const r = k * lineSpacing
+        if (doClip) {
+          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR)
+          if (!clipped) continue
+          const [da1, da2] = clipped
+          if (da2 - da1 < 1e-6) continue
+          ctx.beginPath()
+          ctx.arc(vx, vy, r, da1, da2)
+          ctx.stroke()
+        } else {
+          ctx.beginPath()
+          ctx.arc(vx, vy, r, a1, a2)
+          ctx.stroke()
+        }
       }
     }
 
