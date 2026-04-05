@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
-import { generateTruchetTiling, drawTruchetShapes } from './truchet'
+import { generateTruchetTiling, drawTruchetShapes, VERTEX_COLORS } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -137,7 +137,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawTruchetShapes(ctx, shapesRef.current)
+        drawTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
       }
     } else if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {

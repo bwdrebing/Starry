@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
+import { VERTEX_COLORS } from './truchet'
 import './App.css'
 
 const TILINGS = [
@@ -383,14 +384,14 @@ export default function App() {
                       ↻ Rotate
                     </button>
                   </div>
-                  {['A', 'B', 'C'].map(v => {
+                  {['A', 'B', 'C'].map((v, i) => {
                     const sk = `suppress${v}`
                     const rk = `arcRange${v}`
                     const suppressed = !!selectedTileMeta[sk]
                     const range = selectedTileMeta[rk] ?? [1, v === 'C' ? Math.min(3, aCount) : aCount]
                     return (
                       <div key={v} className="control-group vertex-editor">
-                        <span className="vertex-label">{v}</span>
+                        <span className="vertex-label" style={{ color: VERTEX_COLORS[i] }}>{v}</span>
                         <label className="suppress-label">
                           <input type="checkbox" checked={suppressed}
                             onChange={e => updateTileMeta({ [sk]: e.target.checked })} />

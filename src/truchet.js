@@ -267,13 +267,22 @@ export function generateTruchetTiling(W, H) {
 // Drawing
 // ---------------------------------------------------------------------------
 
-export function drawTruchetShapes(ctx, shapes) {
+// Colors for vertex A / B / C when a tile is selected — shared with the UI.
+export const VERTEX_COLORS = [
+  'rgba(255, 110, 110, 0.95)',   // A — coral red
+  'rgba(255, 200,  50, 0.95)',   // B — gold
+  'rgba( 70, 190, 255, 0.95)',   // C — sky blue
+]
+
+export function drawTruchetShapes(ctx, shapes, selectedIdx = -1) {
+  const baseStyle = ctx.strokeStyle   // caller's white stroke; restored per-vertex
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
     const { orient, startPt, arcCount, lineSpacing,
             suppressA, suppressB, suppressC,
             arcRangeA, arcRangeB, arcRangeC } = meta
-    const aCount = arcCount - 2
+    const aCount     = arcCount - 2
+    const isSelected = selectedIdx >= 0 && meta._idx === selectedIdx
 
     const [rA0, rA1] = arcRangeA ?? [1, aCount]
     const [rB0, rB1] = arcRangeB ?? [1, aCount]
@@ -291,6 +300,7 @@ export function drawTruchetShapes(ctx, shapes) {
 
     // ── Vertex A: full arcs, edge to edge ────────────────────────────────────
     if (!suppressA) {
+      ctx.strokeStyle = isSelected ? VERTEX_COLORS[0] : baseStyle
       const vi       = (startPt + 0) % 3
       const [vx, vy] = vA
       const [a1, a2] = ARC_ANGLES[orient][vi]
@@ -305,9 +315,8 @@ export function drawTruchetShapes(ctx, shapes) {
     const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
 
     // ── Vertex B: clipped outside A's disc ───────────────────────────────────
-    // When discR_A ≥ dEdge the disc engulfs the triangle; skip clipping so the
-    // sliders still have visible effect (geometry prevents the stacking illusion).
     if (!suppressB) {
+      ctx.strokeStyle = isSelected ? VERTEX_COLORS[1] : baseStyle
       const vi       = (startPt + 1) % 3
       const [vx, vy] = vB
       const [a1, a2] = ARC_ANGLES[orient][vi]
@@ -331,9 +340,8 @@ export function drawTruchetShapes(ctx, shapes) {
     }
 
     // ── Vertex C: clipped outside both A's and B's discs ─────────────────────
-    // Intersect the two "outside" arc segments; fall back to full arc when a disc
-    // engulfs the triangle (same condition as vertex B above).
     if (!suppressC) {
+      ctx.strokeStyle = isSelected ? VERTEX_COLORS[2] : baseStyle
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
@@ -352,5 +360,8 @@ export function drawTruchetShapes(ctx, shapes) {
         ctx.stroke()
       }
     }
+
+    // Restore base style after selected tile so subsequent tiles draw normally.
+    if (isSelected) ctx.strokeStyle = baseStyle
   }
 }
