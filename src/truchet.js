@@ -105,13 +105,24 @@ function splitTri(pts, orient) {
   ]
 }
 
-// Generate a full-canvas triangular grid targeting ~20 large triangles.
-// triBase is chosen so that W*H ≈ 10 * triBase² * SIN60, giving ~20 tiles.
-// Some large triangles are randomly subdivided into medium (4 each), and some
-// medium into small (4 each).  All sizes share lineSpacing = triBase/16 so
-// arcs align at shared edges across different-size adjacent triangles.
+// Stable string key for an edge, order-independent.
+function edgeKey(p1, p2) {
+  const ax = Math.round(p1[0] * 100), ay = Math.round(p1[1] * 100)
+  const bx = Math.round(p2[0] * 100), by = Math.round(p2[1] * 100)
+  return ax < bx || (ax === bx && ay < by)
+    ? `${ax},${ay}|${bx},${by}`
+    : `${bx},${by}|${ax},${ay}`
+}
+
+// Generate a full-canvas triangular grid targeting ~40 large triangles.
+// triBase is chosen so that W*H ≈ 20 * triBase² * SIN60, giving ~40 tiles.
+// Boundary triangles (with an exposed edge) are never subdivided; their A
+// vertex is always the interior one and B/C arcs are suppressed in drawing.
+// Some interior large triangles are subdivided into 4 medium each, and some
+// of those medium triangles into 4 small each.
+// All sizes share lineSpacing = triBase/16 so arcs align at shared edges.
 export function generateTruchetTiling(W, H) {
-  const triBase     = Math.sqrt(W * H / (10 * SIN60))
+  const triBase     = Math.sqrt(W * H / (20 * SIN60))
   const triH        = SIN60 * triBase
   const lineSpacing = triBase / 16
 
@@ -142,41 +153,75 @@ export function generateTruchetTiling(W, H) {
     }
   }
 
-  // Fisher-Yates shuffle of index array
-  function shuffled(n) {
-    const a = Array.from({ length: n }, (_, i) => i)
-    for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]]
+  // Build edge-sharing map; edges that appear only once are exposed (boundary).
+  const edgeMap = new Map()
+  largeTris.forEach((tri, ti) => {
+    for (let ei = 0; ei < 3; ei++) {
+      const key = edgeKey(tri.pts[ei], tri.pts[(ei + 1) % 3])
+      if (!edgeMap.has(key)) edgeMap.set(key, [])
+      edgeMap.get(key).push({ ti, ei })
     }
-    return a
+  })
+
+  // Mark each large triangle as boundary (has an exposed edge) and record
+  // which edge index is exposed (used to fix A = interior vertex).
+  largeTris.forEach(tri => {
+    tri.boundary    = false
+    tri.exposedEdge = -1
+    for (let ei = 0; ei < 3; ei++) {
+      const key = edgeKey(tri.pts[ei], tri.pts[(ei + 1) % 3])
+      if (edgeMap.get(key).length === 1) {
+        tri.boundary    = true
+        tri.exposedEdge = ei
+        break
+      }
+    }
+  })
+
+  // Fisher-Yates shuffle of an array (in-place), returns it.
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
   }
 
-  // Subdivide ~30% of large triangles into 4 medium each
-  const nSplitL = Math.max(2, Math.round(largeTris.length * 0.3))
-  const splitL  = new Set(shuffled(largeTris.length).slice(0, nSplitL))
+  // Subdivide ~30% of interior large triangles into 4 medium each.
+  const interiorIdx = largeTris.flatMap((tri, i) => tri.boundary ? [] : [i])
+  const nSplitL     = Math.max(2, Math.round(largeTris.length * 0.3))
+  const splitL      = new Set(shuffle(interiorIdx).slice(0, Math.min(nSplitL, interiorIdx.length)))
+
   const medTris = []
   const result  = []
 
   largeTris.forEach((tri, i) => {
-    if (splitL.has(i)) medTris.push(...splitTri(tri.pts, tri.orient))
-    else result.push({ ...tri, size: 'large' })
+    if (splitL.has(i)) {
+      medTris.push(...splitTri(tri.pts, tri.orient))
+    } else {
+      result.push({ pts: tri.pts, orient: tri.orient, size: 'large',
+                    boundary: tri.boundary, exposedEdge: tri.exposedEdge })
+    }
   })
 
-  // Subdivide ~25% of medium triangles into 4 small each
+  // Subdivide ~25% of medium triangles into 4 small each.
+  // Medium triangles are always interior (born from non-boundary large splits).
   const nSplitM = Math.max(1, Math.round(medTris.length * 0.25))
-  const splitM  = new Set(shuffled(medTris.length).slice(0, nSplitM))
+  const splitM  = new Set(shuffle(medTris.map((_, i) => i)).slice(0, nSplitM))
 
   medTris.forEach((tri, i) => {
     if (splitM.has(i))
       splitTri(tri.pts, tri.orient).forEach(child => result.push({ ...child, size: 'small' }))
-    else result.push({ ...tri, size: 'medium' })
+    else
+      result.push({ ...tri, size: 'medium' })
   })
 
-  return result.map(({ pts, orient, size }) => {
+  return result.map(({ pts, orient, size, boundary, exposedEdge }) => {
     const arcCount = ARC_COUNT[size]
-    const startPt  = Math.floor(Math.random() * 3)
-    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing }]
+    // Boundary triangles: A must be the interior vertex (not on the exposed edge).
+    // Edge ei connects pts[ei] and pts[(ei+1)%3], so the interior vertex is (ei+2)%3.
+    const startPt  = boundary ? (exposedEdge + 2) % 3 : Math.floor(Math.random() * 3)
+    return [pts, { truchet: true, orient, startPt, arcCount, lineSpacing, boundary: !!boundary }]
   })
 }
 
@@ -189,7 +234,7 @@ export function generateTruchetTiling(W, H) {
 export function drawTruchetShapes(ctx, shapes) {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
-    const { orient, startPt, arcCount, lineSpacing } = meta
+    const { orient, startPt, arcCount, lineSpacing, boundary } = meta
 
     ctx.lineCap = 'round'
 
@@ -211,7 +256,7 @@ export function drawTruchetShapes(ctx, shapes) {
     }
 
     // ── Vertex B: same arc count as A, clipped at A's disc ────────────────
-    {
+    if (!boundary) {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
@@ -228,7 +273,7 @@ export function drawTruchetShapes(ctx, shapes) {
     }
 
     // ── Vertex C: first 3 arcs only ────────────────────────────────────────
-    {
+    if (!boundary) {
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
