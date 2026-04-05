@@ -160,27 +160,28 @@ export function drawTruchetShapes(ctx, shapes) {
     ctx.lineCap = 'round'
 
     // A's disc radius = outermost arc circle, used to clip B
-    const discR = (arcCount - 1) * lineSpacing
-    const vA    = pts[(startPt + 0) % 3]
+    const aCount = arcCount - 2
+    const discR  = aCount * lineSpacing
+    const vA     = pts[(startPt + 0) % 3]
 
-    // ── Vertex A: full arcs, edge to edge (k=1 to arcCount-1) ─────────────
+    // ── Vertex A: full arcs, edge to edge (k=1 to arcCount-2) ─────────────
     {
       const vi       = (startPt + 0) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= arcCount - 1; k++) {
+      for (let k = 1; k <= aCount; k++) {
         ctx.beginPath()
         ctx.arc(vx, vy, k * lineSpacing, a1, a2)
         ctx.stroke()
       }
     }
 
-    // ── Vertex B: arcs clipped at A's disc ─────────────────────────────────
+    // ── Vertex B: same arc count as A, clipped at A's disc ────────────────
     {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= arcCount; k++) {
+      for (let k = 1; k <= aCount; k++) {
         const r       = k * lineSpacing
         const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR)
         if (!clipped) continue
@@ -192,6 +193,16 @@ export function drawTruchetShapes(ctx, shapes) {
       }
     }
 
-    // ── Vertex C: no arcs (the open gap that completes the illusion) ────────
+    // ── Vertex C: first 3 arcs only ────────────────────────────────────────
+    {
+      const vi       = (startPt + 2) % 3
+      const [vx, vy] = pts[vi]
+      const [a1, a2] = ARC_ANGLES[orient][vi]
+      for (let k = 1; k <= 3; k++) {
+        ctx.beginPath()
+        ctx.arc(vx, vy, k * lineSpacing, a1, a2)
+        ctx.stroke()
+      }
+    }
   }
 }
