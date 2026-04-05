@@ -96,6 +96,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     if (isTruchet) {
       if (showMotifRef.current) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = 1.5 / scale
         drawTruchetShapes(ctx, shapesRef.current)
       } else {
         ctx.strokeStyle = 'rgba(255,255,255,0.15)'

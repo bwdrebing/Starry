@@ -36,6 +36,8 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
 
     if (configuration === 'truchet') {
       const shapes = generateTruchetTiling(size, size)
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+      ctx.lineWidth = 1
       drawTruchetShapes(ctx, shapes)
       ctx.restore()
       return
