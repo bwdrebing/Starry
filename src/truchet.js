@@ -32,10 +32,11 @@ const ARC_ANGLES = [
 //   large : triBase   / 16  (n=17, arcCount=15)
 //   medium: triBase/2 /  8  (n= 9, arcCount= 7) — same spacing
 //   small : triBase/4 /  4  (n= 5, arcCount= 3) — same spacing
-// arcCount drives how many arcs are drawn: aCount = arcCount - 2 arcs per vertex.
-// Small triangle edge = 4 × lineSpacing, so 4 natural arc positions (k=1..4);
-// arcCount=6 → aCount=4 covers all of them.
-const ARC_COUNT = { large: 15, medium: 7, small: 6 }
+// arcCount drives aCount = arcCount - 2 arcs per vertex.
+// small: max 3 arcs → aCount=3 → arcCount=5
+// medium: max 6 arcs → aCount=6 → arcCount=8
+// large: max 13 arcs → aCount=13 → arcCount=15
+const ARC_COUNT = { large: 15, medium: 8, small: 5 }
 
 // ---------------------------------------------------------------------------
 // Clipping helper
@@ -300,15 +301,17 @@ export function drawTruchetShapes(ctx, shapes) {
       }
     }
 
+    // Edge length is uniform across equilateral triangles — compute once.
+    const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
+
     // ── Vertex B: clipped outside A's disc ───────────────────────────────────
-    // When discR_A ≥ dAB the disc engulfs the triangle; skip clipping so sliders
-    // still have visible effect (geometry can't produce the stacking illusion).
+    // When discR_A ≥ dEdge the disc engulfs the triangle; skip clipping so the
+    // sliders still have visible effect (geometry prevents the stacking illusion).
     if (!suppressB) {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = vB
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      const dAB      = Math.hypot(vx - vA[0], vy - vA[1])
-      const doClip   = discR_A > 1e-6 && discR_A < dAB - 1e-6
+      const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
       for (let k = rB0; k <= rB1; k++) {
         const r = k * lineSpacing
         if (doClip) {
@@ -327,28 +330,26 @@ export function drawTruchetShapes(ctx, shapes) {
       }
     }
 
-    // ── Vertex C: clipped outside B's disc ───────────────────────────────────
+    // ── Vertex C: clipped outside both A's and B's discs ─────────────────────
+    // Intersect the two "outside" arc segments; fall back to full arc when a disc
+    // engulfs the triangle (same condition as vertex B above).
     if (!suppressC) {
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      const dBC      = Math.hypot(vx - vB[0], vy - vB[1])
-      const doClip   = discR_B > 1e-6 && discR_B < dBC - 1e-6
+      const doClipA  = discR_A > 1e-6 && discR_A < dEdge - 1e-6
+      const doClipB  = discR_B > 1e-6 && discR_B < dEdge - 1e-6
       for (let k = rC0; k <= rC1; k++) {
-        const r = k * lineSpacing
-        if (doClip) {
-          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B)
-          if (!clipped) continue
-          const [da1, da2] = clipped
-          if (da2 - da1 < 1e-6) continue
-          ctx.beginPath()
-          ctx.arc(vx, vy, r, da1, da2)
-          ctx.stroke()
-        } else {
-          ctx.beginPath()
-          ctx.arc(vx, vy, r, a1, a2)
-          ctx.stroke()
-        }
+        const r    = k * lineSpacing
+        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+        if (!segA || !segB) continue
+        const lo = Math.max(segA[0], segB[0])
+        const hi = Math.min(segA[1], segB[1])
+        if (hi - lo < 1e-6) continue
+        ctx.beginPath()
+        ctx.arc(vx, vy, r, lo, hi)
+        ctx.stroke()
       }
     }
   }
