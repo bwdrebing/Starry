@@ -32,7 +32,10 @@ const ARC_ANGLES = [
 //   large : triBase   / 16  (n=17, arcCount=15)
 //   medium: triBase/2 /  8  (n= 9, arcCount= 7) — same spacing
 //   small : triBase/4 /  4  (n= 5, arcCount= 3) — same spacing
-const ARC_COUNT = { large: 15, medium: 7, small: 3 }
+// arcCount drives how many arcs are drawn: aCount = arcCount - 2 arcs per vertex.
+// Small triangle edge = 4 × lineSpacing, so 4 natural arc positions (k=1..4);
+// arcCount=6 → aCount=4 covers all of them.
+const ARC_COUNT = { large: 15, medium: 7, small: 6 }
 
 // ---------------------------------------------------------------------------
 // Clipping helper
