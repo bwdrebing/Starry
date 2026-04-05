@@ -160,15 +160,15 @@ export function drawTruchetShapes(ctx, shapes) {
     ctx.lineCap = 'round'
 
     // A's disc radius = outermost arc circle, used to clip B
-    const discR = arcCount * lineSpacing
+    const discR = (arcCount - 1) * lineSpacing
     const vA    = pts[(startPt + 0) % 3]
 
-    // ── Vertex A: full arcs, edge to edge ──────────────────────────────────
+    // ── Vertex A: full arcs, edge to edge (k=1 to arcCount-1) ─────────────
     {
       const vi       = (startPt + 0) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = 1; k <= arcCount; k++) {
+      for (let k = 1; k <= arcCount - 1; k++) {
         ctx.beginPath()
         ctx.arc(vx, vy, k * lineSpacing, a1, a2)
         ctx.stroke()

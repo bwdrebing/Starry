@@ -95,21 +95,21 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ctx.scale(scale, scale)
 
     if (isTruchet) {
+      // Faint triangle outlines — always visible as a debugging aid
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+      ctx.lineWidth = 1 / scale
+      for (const [pts] of shapesRef.current) {
+        if (!pts || pts.length < 3) continue
+        ctx.beginPath()
+        ctx.moveTo(pts[0][0], pts[0][1])
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+        ctx.closePath()
+        ctx.stroke()
+      }
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
         drawTruchetShapes(ctx, shapesRef.current)
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)'
-        ctx.lineWidth = 1 / scale
-        for (const [pts] of shapesRef.current) {
-          if (!pts || pts.length < 3) continue
-          ctx.beginPath()
-          ctx.moveTo(pts[0][0], pts[0][1])
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
-          ctx.closePath()
-          ctx.stroke()
-        }
       }
     } else if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {
