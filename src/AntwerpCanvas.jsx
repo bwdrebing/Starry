@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
-import { generateTruchetTiling, drawTruchetShapes, VERTEX_COLORS } from './truchet'
+import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -375,7 +375,6 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     exportSVG() {
       const canvas = canvasRef.current
       if (!canvas) return
-      if (shapesRef.current[0]?.[1]?.truchet) return  // SVG export not supported for Truchet mode
       const W = canvas.width
       const H = canvas.height
       const { x, y, scale } = transformRef.current
@@ -384,7 +383,12 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const px = n => n.toFixed(4)
 
       let motifContent = ''
-      if (showMotifRef.current) {
+      const isTruchet = shapes[0]?.[1]?.truchet
+      if (isTruchet) {
+        const arcPaths = getTruchetPaths(shapes)
+        const pathEls  = arcPaths.map(d => `    <path d="${d}"/>`).join('\n')
+        motifContent = `\n${pathEls}`
+      } else if (showMotifRef.current) {
         const { underSegs, overSegs } = getHankinSegments(
           shapes,
           thetaRef.current, deltaRef.current,

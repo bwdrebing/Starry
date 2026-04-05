@@ -264,6 +264,93 @@ export function generateTruchetTiling(W, H) {
 }
 
 // ---------------------------------------------------------------------------
+// SVG export
+// ---------------------------------------------------------------------------
+
+// Convert a canvas clockwise arc to an SVG path string.
+function arcToSVGPath(cx, cy, r, a1, a2) {
+  const f  = n => n.toFixed(4)
+  const x1 = cx + r * Math.cos(a1)
+  const y1 = cy + r * Math.sin(a1)
+  const x2 = cx + r * Math.cos(a2)
+  const y2 = cy + r * Math.sin(a2)
+  const largeArc = (a2 - a1) > Math.PI ? 1 : 0
+  return `M${f(x1)},${f(y1)} A${f(r)},${f(r)},0,${largeArc},1,${f(x2)},${f(y2)}`
+}
+
+// Returns an array of SVG path strings for all Truchet arcs in `shapes`,
+// applying the same disc-clipping logic as drawTruchetShapes.
+export function getTruchetPaths(shapes) {
+  const paths = []
+  for (const [pts, meta] of shapes) {
+    if (!meta?.truchet) continue
+    const { orient, startPt, arcCount, lineSpacing,
+            suppressA, suppressB, suppressC,
+            arcRangeA, arcRangeB, arcRangeC } = meta
+    const aCount  = arcCount - 2
+    const [rA0, rA1] = arcRangeA ?? [1, aCount]
+    const [rB0, rB1] = arcRangeB ?? [1, aCount]
+    const [rC0, rC1] = arcRangeC ?? [1, Math.min(3, aCount)]
+
+    const vA     = pts[(startPt + 0) % 3]
+    const vB     = pts[(startPt + 1) % 3]
+    const discR_A = suppressA ? 0 : rA1 * lineSpacing
+    const discR_B = suppressB ? 0 : rB1 * lineSpacing
+
+    // ── Vertex A ─────────────────────────────────────────────────────────────
+    if (!suppressA) {
+      const vi       = (startPt + 0) % 3
+      const [vx, vy] = vA
+      const [a1, a2] = ARC_ANGLES[orient][vi]
+      for (let k = rA0; k <= rA1; k++)
+        paths.push(arcToSVGPath(vx, vy, k * lineSpacing, a1, a2))
+    }
+
+    const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
+
+    // ── Vertex B: clipped outside A's disc ───────────────────────────────────
+    if (!suppressB) {
+      const vi       = (startPt + 1) % 3
+      const [vx, vy] = vB
+      const [a1, a2] = ARC_ANGLES[orient][vi]
+      const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
+      for (let k = rB0; k <= rB1; k++) {
+        const r = k * lineSpacing
+        if (doClip) {
+          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
+          if (!clipped) continue
+          const [da1, da2] = clipped
+          if (da2 - da1 < 1e-6) continue
+          paths.push(arcToSVGPath(vx, vy, r, da1, da2))
+        } else {
+          paths.push(arcToSVGPath(vx, vy, r, a1, a2))
+        }
+      }
+    }
+
+    // ── Vertex C: clipped outside both A's and B's discs ─────────────────────
+    if (!suppressC) {
+      const vi       = (startPt + 2) % 3
+      const [vx, vy] = pts[vi]
+      const [a1, a2] = ARC_ANGLES[orient][vi]
+      const doClipA  = discR_A > 1e-6 && discR_A < dEdge - 1e-6
+      const doClipB  = discR_B > 1e-6 && discR_B < dEdge - 1e-6
+      for (let k = rC0; k <= rC1; k++) {
+        const r    = k * lineSpacing
+        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+        if (!segA || !segB) continue
+        const lo = Math.max(segA[0], segB[0])
+        const hi = Math.min(segA[1], segB[1])
+        if (hi - lo < 1e-6) continue
+        paths.push(arcToSVGPath(vx, vy, r, lo, hi))
+      }
+    }
+  }
+  return paths
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 
