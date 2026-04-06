@@ -91,6 +91,16 @@ function clipArcOutsideDisc(arcCenter, arcR, a1, a2, discCenter, discR) {
 }
 
 // ---------------------------------------------------------------------------
+// Geometry helpers (module-scope so subdivision helpers can use them)
+// ---------------------------------------------------------------------------
+
+// Stable string key for a single vertex.
+function vKey(p) { return `${Math.round(p[0]*100)},${Math.round(p[1]*100)}` }
+
+// Stable string key for a triangle, independent of vertex order.
+function triKey(pts) { return pts.map(vKey).sort().join('|') }
+
+// ---------------------------------------------------------------------------
 // Tiling generation
 // ---------------------------------------------------------------------------
 
@@ -185,7 +195,6 @@ export function generateTruchetTiling(W, H) {
   // Build set of vertices that sit on an exposed edge (boundary vertices).
   // Only the two vertices of each exposed edge are included — NOT the interior
   // vertex of the boundary triangle — so adjacency detection is precise.
-  function vKey(p) { return `${Math.round(p[0]*100)},${Math.round(p[1]*100)}` }
   const boundaryVerts = new Set()
   largeTris.forEach(tri => {
     if (!tri.boundary) return
@@ -213,7 +222,10 @@ export function generateTruchetTiling(W, H) {
 
   largeTris.forEach((tri, i) => {
     if (splitL.has(i)) {
-      medTris.push(...splitTri(tri.pts, tri.orient))
+      const pg = triKey(tri.pts)
+      splitTri(tri.pts, tri.orient).forEach(child => medTris.push({
+        ...child, parentGroup: pg, parentVerts: tri.pts, parentOrient: tri.orient, parentSize: 'large',
+      }))
     } else {
       // For non-boundary triangles: check if exactly one vertex is on a boundary
       // edge of the tiling.  If so, that vertex must be C (suppress its arcs).
@@ -234,13 +246,23 @@ export function generateTruchetTiling(W, H) {
   const splitM  = new Set(shuffle(medTris.map((_, i) => i)).slice(0, nSplitM))
 
   medTris.forEach((tri, i) => {
-    if (splitM.has(i))
-      splitTri(tri.pts, tri.orient).forEach(child => result.push({ ...child, size: 'small' }))
-    else
+    if (splitM.has(i)) {
+      const pg = triKey(tri.pts)
+      splitTri(tri.pts, tri.orient).forEach(child => result.push({
+        ...child, size: 'small',
+        parentGroup: pg, parentVerts: tri.pts, parentOrient: tri.orient, parentSize: 'medium',
+        _parentInfo: {
+          parentGroup: tri.parentGroup, parentVerts: tri.parentVerts,
+          parentOrient: tri.parentOrient, parentSize: tri.parentSize,
+        },
+      }))
+    } else {
       result.push({ ...tri, size: 'medium' })
+    }
   })
 
-  return result.map(({ pts, orient, size, boundary, exposedEdge, cornerVIdx }, i) => {
+  return result.map(({ pts, orient, size, boundary, exposedEdge, cornerVIdx,
+                       parentGroup, parentVerts, parentOrient, parentSize, _parentInfo }, i) => {
     const arcCount  = ARC_COUNT[size]
     const aCount    = arcCount - 2
     const startPt   = boundary        ? (exposedEdge + 2) % 3
@@ -251,6 +273,7 @@ export function generateTruchetTiling(W, H) {
     return [pts, {
       truchet:   true,
       orient,    startPt, arcCount, lineSpacing,
+      size,
       boundary:  isBoundary,
       suppressA: false,
       suppressB: isBoundary,
@@ -259,6 +282,7 @@ export function generateTruchetTiling(W, H) {
       arcRangeB: [1, aCount],
       arcRangeC: [1, Math.min(3, aCount)],
       _idx:      i,
+      ...(parentGroup !== undefined ? { parentGroup, parentVerts, parentOrient, parentSize, _parentInfo } : {}),
     }]
   })
 }
@@ -451,4 +475,107 @@ export function drawTruchetShapes(ctx, shapes, selectedIdx = -1) {
     // Restore base style after selected tile so subsequent tiles draw normally.
     if (isSelected) ctx.strokeStyle = baseStyle
   }
+}
+
+// ---------------------------------------------------------------------------
+// Subdivision and merge helpers
+// ---------------------------------------------------------------------------
+
+// Subdivide the tile at `idx` into 4 children of the next smaller size.
+// Mutates `shapes` in place and reassigns _idx for all tiles.
+// Returns true on success, false if the tile cannot be subdivided (already small).
+export function subdivideTruchetShapes(shapes, idx) {
+  const tile = shapes[idx]
+  if (!tile) return false
+  const [pts, meta] = tile
+  if (!meta?.truchet) return false
+
+  const childSize = meta.size === 'large' ? 'medium' : meta.size === 'medium' ? 'small' : null
+  if (!childSize) return false
+
+  const pg = triKey(pts)
+  const parentInfo = {
+    parentGroup: meta.parentGroup, parentVerts: meta.parentVerts,
+    parentOrient: meta.parentOrient, parentSize: meta.parentSize,
+  }
+
+  const newTiles = splitTri(pts, meta.orient).map(({ pts: cPts, orient: cOrient }) => {
+    const arcCount = ARC_COUNT[childSize]
+    const aCount   = arcCount - 2
+    return [cPts, {
+      truchet: true,
+      orient: cOrient,
+      startPt: Math.floor(Math.random() * 3),
+      arcCount,
+      lineSpacing: meta.lineSpacing,
+      size: childSize,
+      boundary: false,
+      suppressA: false, suppressB: false, suppressC: false,
+      arcRangeA: [1, aCount],
+      arcRangeB: [1, aCount],
+      arcRangeC: [1, Math.min(3, aCount)],
+      parentGroup: pg,
+      parentVerts: pts,
+      parentOrient: meta.orient,
+      parentSize: meta.size,
+      _parentInfo: parentInfo,
+    }]
+  })
+
+  shapes.splice(idx, 1, ...newTiles)
+  shapes.forEach((s, i) => { if (s[1]) s[1]._idx = i })
+  return true
+}
+
+// Returns true if the tile at `idx` can be merged with its 3 siblings
+// (all 4 must exist at the same size with the same parentGroup).
+export function canMergeTruchetShapes(shapes, idx) {
+  const tile = shapes[idx]
+  if (!tile) return false
+  const [, meta] = tile
+  if (!meta?.parentGroup || !meta?.parentVerts || !meta?.parentSize) return false
+  const siblings = shapes.filter(s => s[1]?.parentGroup === meta.parentGroup)
+  return siblings.length === 4 && siblings.every(s => s[1].size === meta.size)
+}
+
+// Merge the tile at `idx` and its 3 siblings back into their parent triangle.
+// Mutates `shapes` in place and reassigns _idx. Returns new parent index, or -1.
+export function mergeTruchetShapes(shapes, idx) {
+  if (!canMergeTruchetShapes(shapes, idx)) return -1
+
+  const [, meta] = shapes[idx]
+  const { parentGroup, parentVerts, parentOrient, parentSize, _parentInfo } = meta
+
+  const siblingIndices = shapes
+    .map((s, i) => s[1]?.parentGroup === parentGroup ? i : -1)
+    .filter(i => i >= 0)
+    .sort((a, b) => a - b)
+
+  const arcCount = ARC_COUNT[parentSize]
+  const aCount   = arcCount - 2
+  const parentTile = [parentVerts, {
+    truchet: true,
+    orient: parentOrient,
+    startPt: Math.floor(Math.random() * 3),
+    arcCount,
+    lineSpacing: meta.lineSpacing,
+    size: parentSize,
+    boundary: false,
+    suppressA: false, suppressB: false, suppressC: false,
+    arcRangeA: [1, aCount],
+    arcRangeB: [1, aCount],
+    arcRangeC: [1, Math.min(3, aCount)],
+    ...(_parentInfo?.parentGroup ? {
+      parentGroup:  _parentInfo.parentGroup,
+      parentVerts:  _parentInfo.parentVerts,
+      parentOrient: _parentInfo.parentOrient,
+      parentSize:   _parentInfo.parentSize,
+    } : {}),
+  }]
+
+  const insertAt = siblingIndices[0]
+  for (let i = siblingIndices.length - 1; i >= 0; i--) shapes.splice(siblingIndices[i], 1)
+  shapes.splice(insertAt, 0, parentTile)
+  shapes.forEach((s, i) => { if (s[1]) s[1]._idx = i })
+  return insertAt
 }

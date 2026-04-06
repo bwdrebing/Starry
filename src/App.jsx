@@ -384,6 +384,37 @@ export default function App() {
                       ↻ Rotate
                     </button>
                   </div>
+                  {(selectedTileMeta.size === 'large' || selectedTileMeta.size === 'medium') && (
+                    <div className="control-group">
+                      <label>Split</label>
+                      <button className="rotate-btn" onClick={() => {
+                        canvasRef.current?.subdivideTile(selectedTileIdx)
+                        setSelectedTileIdx(-1)
+                        setSelectedTileMeta(null)
+                      }}>
+                        ⊞ {selectedTileMeta.size === 'large' ? '→ Medium' : '→ Small'}
+                      </button>
+                    </div>
+                  )}
+                  {(selectedTileMeta.size === 'medium' || selectedTileMeta.size === 'small') &&
+                    canvasRef.current?.canMergeTile(selectedTileIdx) && (
+                    <div className="control-group">
+                      <label>Merge</label>
+                      <button className="rotate-btn" onClick={() => {
+                        const newIdx = canvasRef.current?.mergeTile(selectedTileIdx)
+                        if (newIdx >= 0) {
+                          const meta = canvasRef.current?.getTileMeta(newIdx)
+                          setSelectedTileIdx(newIdx)
+                          setSelectedTileMeta(meta)
+                        } else {
+                          setSelectedTileIdx(-1)
+                          setSelectedTileMeta(null)
+                        }
+                      }}>
+                        ⊟ {selectedTileMeta.size === 'medium' ? '→ Large' : '→ Medium'}
+                      </button>
+                    </div>
+                  )}
                   {['A', 'B', 'C'].map((v, i) => {
                     const sk = `suppress${v}`
                     const rk = `arcRange${v}`
