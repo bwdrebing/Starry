@@ -2,7 +2,8 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
-import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS } from './truchet'
+import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
+         subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -431,6 +432,19 @@ ${overPaths}
     },
     getTileMeta(idx) {
       return allShapesRef.current[idx]?.[1] ?? null
+    },
+    subdivideTile(idx) {
+      const ok = subdivideTruchetShapes(allShapesRef.current, idx)
+      if (ok) { applyRadius(); draw() }
+      return ok
+    },
+    canMergeTile(idx) {
+      return canMergeTruchetShapes(allShapesRef.current, idx)
+    },
+    mergeTile(idx) {
+      const newIdx = mergeTruchetShapes(allShapesRef.current, idx)
+      if (newIdx >= 0) { applyRadius(); draw() }
+      return newIdx
     },
   }))
 
