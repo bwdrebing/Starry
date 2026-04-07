@@ -4,6 +4,8 @@ import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
          subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
+import { generateSquareTruchetTiling, drawSquareTruchetShapes, getSquareTruchetPaths,
+         subdivideSquareTruchetShapes, canMergeSquareTruchetShapes, mergeSquareTruchetShapes } from './squareTruchet'
 
 const PALETTE = {
   3:  ['rgba(255,107, 87,0.2)', 'rgba(255,107, 87,0.9)'],
@@ -39,11 +41,15 @@ function touchCenter(touches) {
 function fmt(n) { return n.toFixed(4) }
 function segPath([p1, p2]) { return `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])}` }
 
-function pointInTri(px, py, [[ax, ay], [bx, by], [cx, cy]]) {
-  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by)
-  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy)
-  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay)
-  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
+function pointInPoly(px, py, pts) {
+  let inside = false
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i][0], yi = pts[i][1]
+    const xj = pts[j][0], yj = pts[j][1]
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+      inside = !inside
+  }
+  return inside
 }
 
 const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1 }, ref) {
@@ -99,7 +105,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     ctx.clearRect(0, 0, W, H)
 
-    const isTruchet = shapesRef.current[0]?.[1]?.truchet === true
+    const firstMeta = shapesRef.current[0]?.[1]
+    const isTruchet = firstMeta?.truchet === true || firstMeta?.squareTruchet === true
     isTruchetRef.current = isTruchet
 
     ctx.save()
@@ -138,7 +145,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
+        if (shapesRef.current[0]?.[1]?.squareTruchet) {
+          drawSquareTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
+        } else {
+          drawTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
+        }
       }
     } else if (currentMode === 'tiling') {
       for (const shape of shapesRef.current) {
@@ -239,6 +250,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     if (configuration === 'truchet') {
       allShapesRef.current = generateTruchetTiling(W, H)
+    } else if (configuration === 'squareTruchet') {
+      allShapesRef.current = generateSquareTruchetTiling(W, H)
     } else if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
       allShapesRef.current = generateMultigrid(W, H, sym)
@@ -320,7 +333,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           const dx = (cx - canvas.width / 2 - x) / scale
           const dy = (cy - canvas.height / 2 - y) / scale
           for (const [pts, meta] of shapesRef.current) {
-            if (pts?.length >= 3 && pointInTri(dx, dy, pts)) {
+            if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
               onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
               gestureRef.current = null
               return
@@ -350,7 +363,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const dx = (cx - W / 2 - x) / scale
       const dy = (cy - H / 2 - y) / scale
       for (const [pts, meta] of shapesRef.current) {
-        if (pts?.length >= 3 && pointInTri(dx, dy, pts)) {
+        if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
           onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
           return
         }
@@ -384,8 +397,12 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const px = n => n.toFixed(4)
 
       let motifContent = ''
-      const isTruchet = shapes[0]?.[1]?.truchet
-      if (isTruchet) {
+      const firstMetaSVG = shapes[0]?.[1]
+      if (firstMetaSVG?.squareTruchet) {
+        const arcPaths = getSquareTruchetPaths(shapes)
+        const pathEls  = arcPaths.map(d => `    <path d="${d}"/>`).join('\n')
+        motifContent = `\n${pathEls}`
+      } else if (firstMetaSVG?.truchet) {
         const arcPaths = getTruchetPaths(shapes)
         const pathEls  = arcPaths.map(d => `    <path d="${d}"/>`).join('\n')
         motifContent = `\n${pathEls}`
@@ -434,15 +451,24 @@ ${overPaths}
       return allShapesRef.current[idx]?.[1] ?? null
     },
     subdivideTile(idx) {
-      const ok = subdivideTruchetShapes(allShapesRef.current, idx)
+      const meta = allShapesRef.current[idx]?.[1]
+      const ok = meta?.squareTruchet
+        ? subdivideSquareTruchetShapes(allShapesRef.current, idx)
+        : subdivideTruchetShapes(allShapesRef.current, idx)
       if (ok) { applyRadius(); draw() }
       return ok
     },
     canMergeTile(idx) {
-      return canMergeTruchetShapes(allShapesRef.current, idx)
+      const meta = allShapesRef.current[idx]?.[1]
+      return meta?.squareTruchet
+        ? canMergeSquareTruchetShapes(allShapesRef.current, idx)
+        : canMergeTruchetShapes(allShapesRef.current, idx)
     },
     mergeTile(idx) {
-      const newIdx = mergeTruchetShapes(allShapesRef.current, idx)
+      const meta = allShapesRef.current[idx]?.[1]
+      const newIdx = meta?.squareTruchet
+        ? mergeSquareTruchetShapes(allShapesRef.current, idx)
+        : mergeTruchetShapes(allShapesRef.current, idx)
       if (newIdx >= 0) { applyRadius(); draw() }
       return newIdx
     },

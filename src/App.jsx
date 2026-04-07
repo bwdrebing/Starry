@@ -3,6 +3,7 @@ import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
 import { VERTEX_COLORS } from './truchet'
+import { SQUARE_VERTEX_COLORS } from './squareTruchet'
 import './App.css'
 
 const TILINGS = [
@@ -54,6 +55,7 @@ const TILINGS = [
   { label: 'Quasi-periodic: 8-fold (Ammann-Beenker)',      config: 'penrose8' },
   // ── Truchet ─────────────────────────────────────────────────────────────────
   { label: 'Truchet: Triangular',                          config: 'truchet' },
+  { label: 'Truchet: Square',                              config: 'squareTruchet' },
 ]
 
 export default function App() {
@@ -76,7 +78,9 @@ export default function App() {
   const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
 
-  const isTruchet = TILINGS[tilingIndex].config === 'truchet'
+  const isTruchet       = TILINGS[tilingIndex].config === 'truchet'
+  const isSquareTruchet = TILINGS[tilingIndex].config === 'squareTruchet'
+  const isAnyTruchet    = isTruchet || isSquareTruchet
 
   function updateTileMeta(updates) {
     if (selectedTileIdx < 0) return
@@ -165,7 +169,7 @@ export default function App() {
 
             <div className="shelf-divider" />
 
-            {!isTruchet && (
+            {!isAnyTruchet && (
               <>
             <div className="control-group">
               <label>Parquet</label>
@@ -332,7 +336,7 @@ export default function App() {
 
             <div className="shelf-divider" />
 
-            {!isTruchet && (
+            {!isAnyTruchet && (
               <>
             <div className="control-group">
               <label htmlFor="delta-slider">Delta</label>
@@ -374,13 +378,16 @@ export default function App() {
               </>
             )}
 
-            {isTruchet && selectedTileMeta && (() => {
-              const aCount = (selectedTileMeta.arcCount ?? 15) - 2
+            {isAnyTruchet && selectedTileMeta && (() => {
+              const nVerts      = isSquareTruchet ? 4 : 3
+              const vertColors  = isSquareTruchet ? SQUARE_VERTEX_COLORS : VERTEX_COLORS
+              const aCount      = (selectedTileMeta.arcCount ?? 15) - 2
+              const vertexLabels = ['A', 'B', 'C', ...(isSquareTruchet ? ['D'] : [])]
               return (
                 <>
                   <div className="control-group">
                     <label>Tile</label>
-                    <button className="rotate-btn" onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 1) % 3 })}>
+                    <button className="rotate-btn" onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 1) % nVerts })}>
                       ↻ Rotate
                     </button>
                   </div>
@@ -415,14 +422,17 @@ export default function App() {
                       </button>
                     </div>
                   )}
-                  {['A', 'B', 'C'].map((v, i) => {
+                  {vertexLabels.map((v, i) => {
                     const sk = `suppress${v}`
                     const rk = `arcRange${v}`
                     const suppressed = !!selectedTileMeta[sk]
-                    const range = selectedTileMeta[rk] ?? [1, v === 'C' ? Math.min(3, aCount) : aCount]
+                    const defaultMax = v === 'D' ? Math.min(2, aCount)
+                                     : v === 'C' && !isSquareTruchet ? Math.min(3, aCount)
+                                     : aCount
+                    const range = selectedTileMeta[rk] ?? [1, defaultMax]
                     return (
                       <div key={v} className="control-group vertex-editor">
-                        <span className="vertex-label" style={{ color: VERTEX_COLORS[i] }}>{v}</span>
+                        <span className="vertex-label" style={{ color: vertColors[i] }}>{v}</span>
                         <label className="suppress-label">
                           <input type="checkbox" checked={suppressed}
                             onChange={e => updateTileMeta({ [sk]: e.target.checked })} />
