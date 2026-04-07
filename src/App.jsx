@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
@@ -83,6 +83,82 @@ export default function App() {
     canvasRef.current?.updateTileMeta(selectedTileIdx, updates)
     setSelectedTileMeta(prev => ({ ...prev, ...updates }))
   }
+
+  useEffect(() => {
+    if (!isTruchet) return
+    function handleKeyDown(e) {
+      if (selectedTileIdx < 0 || !selectedTileMeta) return
+
+      // Rotate right (])
+      if (e.key === ']') {
+        e.preventDefault()
+        const newStartPt = (selectedTileMeta.startPt + 1) % 3
+        canvasRef.current?.updateTileMeta(selectedTileIdx, { startPt: newStartPt })
+        setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
+        return
+      }
+      // Rotate left ([)
+      if (e.key === '[') {
+        e.preventDefault()
+        const newStartPt = (selectedTileMeta.startPt + 2) % 3
+        canvasRef.current?.updateTileMeta(selectedTileIdx, { startPt: newStartPt })
+        setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
+        return
+      }
+
+      // Arrow key navigation
+      const DIRS = {
+        ArrowRight: [1, 0],
+        ArrowLeft:  [-1, 0],
+        ArrowDown:  [0, 1],
+        ArrowUp:    [0, -1],
+      }
+      const dir = DIRS[e.key]
+      if (!dir) return
+      e.preventDefault()
+
+      const shapes = canvasRef.current?.getShapes()
+      if (!shapes) return
+      const currentShape = shapes[selectedTileIdx]
+      if (!currentShape?.[0] || currentShape[0].length < 3) return
+
+      const pts0 = currentShape[0]
+      const n0 = pts0.length
+      const cx = pts0.reduce((s, p) => s + p[0], 0) / n0
+      const cy = pts0.reduce((s, p) => s + p[1], 0) / n0
+
+      // Pick the neighbor whose centroid is most "in the direction" of the arrow.
+      // Score = dot(to_candidate, dir) / dist² = cos(angle) / dist — favours
+      // nearby tiles that are closely aligned with the pressed direction.
+      let bestIdx = -1
+      let bestScore = -Infinity
+      for (const [pts, meta] of shapes) {
+        if (meta._idx === selectedTileIdx) continue
+        if (!pts || pts.length < 3) continue
+        const n = pts.length
+        const tx = pts.reduce((s, p) => s + p[0], 0) / n
+        const ty = pts.reduce((s, p) => s + p[1], 0) / n
+        const dx = tx - cx
+        const dy = ty - cy
+        const dot = dx * dir[0] + dy * dir[1]
+        if (dot <= 0) continue
+        const score = dot / (dx * dx + dy * dy)
+        if (score > bestScore) {
+          bestScore = score
+          bestIdx = meta._idx
+        }
+      }
+
+      if (bestIdx >= 0) {
+        const meta = canvasRef.current.getTileMeta(bestIdx)
+        setSelectedTileIdx(bestIdx)
+        setSelectedTileMeta(meta)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isTruchet, selectedTileIdx, selectedTileMeta])
 
   return (
     <div className="app">
