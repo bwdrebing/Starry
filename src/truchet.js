@@ -38,6 +38,19 @@ const ARC_ANGLES = [
 // large: max 13 arcs → aCount=13 → arcCount=15
 const ARC_COUNT = { large: 15, medium: 8, small: 5 }
 
+// Returns the radius of the outermost enabled arc, used for disc-occlusion clipping.
+function outerRadius(arcSet, lineSpacing) {
+  for (let k = arcSet.length; k >= 1; k--) {
+    if (arcSet[k - 1]) return k * lineSpacing
+  }
+  return 0
+}
+
+// Build a boolean arcSet array of the given length: all true if enabled, all false if suppressed.
+function makeArcSet(len, suppressed) {
+  return new Array(len).fill(!suppressed)
+}
+
 // ---------------------------------------------------------------------------
 // Clipping helper
 // ---------------------------------------------------------------------------
@@ -275,12 +288,9 @@ export function generateTruchetTiling(W, H) {
       orient,    startPt, arcCount, lineSpacing,
       size,
       boundary:  isBoundary,
-      suppressA: false,
-      suppressB: isBoundary,
-      suppressC: isBoundary || isCorner,
-      arcRangeA: [1, aCount],
-      arcRangeB: [1, aCount],
-      arcRangeC: [1, Math.min(3, aCount)],
+      arcSetA: makeArcSet(aCount, false),
+      arcSetB: makeArcSet(aCount, isBoundary),
+      arcSetC: makeArcSet(Math.min(3, aCount), isBoundary || isCorner),
       _idx:      i,
       ...(parentGroup !== undefined ? { parentGroup, parentVerts, parentOrient, parentSize, _parentInfo } : {}),
     }]
@@ -309,36 +319,38 @@ export function getTruchetPaths(shapes) {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
     const { orient, startPt, arcCount, lineSpacing,
-            suppressA, suppressB, suppressC,
-            arcRangeA, arcRangeB, arcRangeC } = meta
+            arcSetA, arcSetB, arcSetC } = meta
     const aCount  = arcCount - 2
-    const [rA0, rA1] = arcRangeA ?? [1, aCount]
-    const [rB0, rB1] = arcRangeB ?? [1, aCount]
-    const [rC0, rC1] = arcRangeC ?? [1, Math.min(3, aCount)]
+    const sA = arcSetA ?? makeArcSet(aCount, false)
+    const sB = arcSetB ?? makeArcSet(aCount, false)
+    const sC = arcSetC ?? makeArcSet(Math.min(3, aCount), false)
 
-    const vA     = pts[(startPt + 0) % 3]
-    const vB     = pts[(startPt + 1) % 3]
-    const discR_A = suppressA ? 0 : rA1 * lineSpacing
-    const discR_B = suppressB ? 0 : rB1 * lineSpacing
+    const vA      = pts[(startPt + 0) % 3]
+    const vB      = pts[(startPt + 1) % 3]
+    const discR_A = outerRadius(sA, lineSpacing)
+    const discR_B = outerRadius(sB, lineSpacing)
 
     // ── Vertex A ─────────────────────────────────────────────────────────────
-    if (!suppressA) {
+    if (sA.some(Boolean)) {
       const vi       = (startPt + 0) % 3
       const [vx, vy] = vA
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = rA0; k <= rA1; k++)
+      for (let k = 1; k <= sA.length; k++) {
+        if (!sA[k - 1]) continue
         paths.push(arcToSVGPath(vx, vy, k * lineSpacing, a1, a2))
+      }
     }
 
     const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
 
     // ── Vertex B: clipped outside A's disc ───────────────────────────────────
-    if (!suppressB) {
+    if (sB.some(Boolean)) {
       const vi       = (startPt + 1) % 3
       const [vx, vy] = vB
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
-      for (let k = rB0; k <= rB1; k++) {
+      for (let k = 1; k <= sB.length; k++) {
+        if (!sB[k - 1]) continue
         const r = k * lineSpacing
         if (doClip) {
           const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
@@ -353,13 +365,14 @@ export function getTruchetPaths(shapes) {
     }
 
     // ── Vertex C: clipped outside both A's and B's discs ─────────────────────
-    if (!suppressC) {
+    if (sC.some(Boolean)) {
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const doClipA  = discR_A > 1e-6 && discR_A < dEdge - 1e-6
       const doClipB  = discR_B > 1e-6 && discR_B < dEdge - 1e-6
-      for (let k = rC0; k <= rC1; k++) {
+      for (let k = 1; k <= sC.length; k++) {
+        if (!sC[k - 1]) continue
         const r    = k * lineSpacing
         const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
         const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
@@ -390,32 +403,29 @@ export function drawTruchetShapes(ctx, shapes, selectedIdx = -1) {
   for (const [pts, meta] of shapes) {
     if (!meta?.truchet) continue
     const { orient, startPt, arcCount, lineSpacing,
-            suppressA, suppressB, suppressC,
-            arcRangeA, arcRangeB, arcRangeC } = meta
+            arcSetA, arcSetB, arcSetC } = meta
     const aCount     = arcCount - 2
     const isSelected = selectedIdx >= 0 && meta._idx === selectedIdx
 
-    const [rA0, rA1] = arcRangeA ?? [1, aCount]
-    const [rB0, rB1] = arcRangeB ?? [1, aCount]
-    const [rC0, rC1] = arcRangeC ?? [1, Math.min(3, aCount)]
+    const sA = arcSetA ?? makeArcSet(aCount, false)
+    const sB = arcSetB ?? makeArcSet(aCount, false)
+    const sC = arcSetC ?? makeArcSet(Math.min(3, aCount), false)
 
-    const vA = pts[(startPt + 0) % 3]
-    const vB = pts[(startPt + 1) % 3]
-
-    // Disc radii for occlusion: based on each vertex's actual outermost drawn arc.
-    // If a vertex is suppressed its disc collapses to 0 so the next vertex draws freely.
-    const discR_A = suppressA ? 0 : rA1 * lineSpacing
-    const discR_B = suppressB ? 0 : rB1 * lineSpacing
+    const vA      = pts[(startPt + 0) % 3]
+    const vB      = pts[(startPt + 1) % 3]
+    const discR_A = outerRadius(sA, lineSpacing)
+    const discR_B = outerRadius(sB, lineSpacing)
 
     ctx.lineCap = 'round'
 
     // ── Vertex A: full arcs, edge to edge ────────────────────────────────────
-    if (!suppressA) {
+    if (sA.some(Boolean)) {
       ctx.strokeStyle = isSelected ? VERTEX_COLORS[0] : baseStyle
       const vi       = (startPt + 0) % 3
       const [vx, vy] = vA
       const [a1, a2] = ARC_ANGLES[orient][vi]
-      for (let k = rA0; k <= rA1; k++) {
+      for (let k = 1; k <= sA.length; k++) {
+        if (!sA[k - 1]) continue
         ctx.beginPath()
         ctx.arc(vx, vy, k * lineSpacing, a1, a2)
         ctx.stroke()
@@ -426,13 +436,14 @@ export function drawTruchetShapes(ctx, shapes, selectedIdx = -1) {
     const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
 
     // ── Vertex B: clipped outside A's disc ───────────────────────────────────
-    if (!suppressB) {
+    if (sB.some(Boolean)) {
       ctx.strokeStyle = isSelected ? VERTEX_COLORS[1] : baseStyle
       const vi       = (startPt + 1) % 3
       const [vx, vy] = vB
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
-      for (let k = rB0; k <= rB1; k++) {
+      for (let k = 1; k <= sB.length; k++) {
+        if (!sB[k - 1]) continue
         const r = k * lineSpacing
         if (doClip) {
           const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
@@ -451,14 +462,15 @@ export function drawTruchetShapes(ctx, shapes, selectedIdx = -1) {
     }
 
     // ── Vertex C: clipped outside both A's and B's discs ─────────────────────
-    if (!suppressC) {
+    if (sC.some(Boolean)) {
       ctx.strokeStyle = isSelected ? VERTEX_COLORS[2] : baseStyle
       const vi       = (startPt + 2) % 3
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[orient][vi]
       const doClipA  = discR_A > 1e-6 && discR_A < dEdge - 1e-6
       const doClipB  = discR_B > 1e-6 && discR_B < dEdge - 1e-6
-      for (let k = rC0; k <= rC1; k++) {
+      for (let k = 1; k <= sC.length; k++) {
+        if (!sC[k - 1]) continue
         const r    = k * lineSpacing
         const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
         const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
@@ -510,10 +522,9 @@ export function subdivideTruchetShapes(shapes, idx) {
       lineSpacing: meta.lineSpacing,
       size: childSize,
       boundary: false,
-      suppressA: false, suppressB: false, suppressC: false,
-      arcRangeA: [1, aCount],
-      arcRangeB: [1, aCount],
-      arcRangeC: [1, Math.min(3, aCount)],
+      arcSetA: makeArcSet(aCount, false),
+      arcSetB: makeArcSet(aCount, false),
+      arcSetC: makeArcSet(Math.min(3, aCount), false),
       parentGroup: pg,
       parentVerts: pts,
       parentOrient: meta.orient,
@@ -561,10 +572,9 @@ export function mergeTruchetShapes(shapes, idx) {
     lineSpacing: meta.lineSpacing,
     size: parentSize,
     boundary: false,
-    suppressA: false, suppressB: false, suppressC: false,
-    arcRangeA: [1, aCount],
-    arcRangeB: [1, aCount],
-    arcRangeC: [1, Math.min(3, aCount)],
+    arcSetA: makeArcSet(aCount, false),
+    arcSetB: makeArcSet(aCount, false),
+    arcSetC: makeArcSet(Math.min(3, aCount), false),
     ...(_parentInfo?.parentGroup ? {
       parentGroup:  _parentInfo.parentGroup,
       parentVerts:  _parentInfo.parentVerts,
