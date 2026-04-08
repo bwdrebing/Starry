@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
@@ -57,6 +57,86 @@ const TILINGS = [
   { label: 'Truchet: Triangular',                          config: 'truchet' },
   { label: 'Truchet: Square',                              config: 'squareTruchet' },
 ]
+
+// Swipeable row of per-arc toggle buttons for one vertex.
+// arcSet: boolean[], color: CSS color string for the active state, label: vertex letter
+function ArcToggleRow({ arcSet, onChange, color, label }) {
+  const containerRef = useRef(null)
+  const dragRef      = useRef(null)
+
+  const getIdxAt = useCallback((clientX, clientY) => {
+    const el      = document.elementFromPoint(clientX, clientY)
+    const idxStr  = el?.dataset?.arcIdx ?? el?.parentElement?.dataset?.arcIdx
+    if (idxStr === undefined || idxStr === null) return null
+    const idx = parseInt(idxStr, 10)
+    return isNaN(idx) ? null : idx
+  }, [])
+
+  function handlePointerDown(e) {
+    e.preventDefault()
+    const idx = getIdxAt(e.clientX, e.clientY)
+    if (idx === null) return
+    containerRef.current?.setPointerCapture(e.pointerId)
+    const targetState = !arcSet[idx]
+    dragRef.current = { targetState, lastIdx: idx }
+    const next = arcSet.map((v, i) => i === idx ? targetState : v)
+    onChange(next)
+  }
+
+  function handlePointerMove(e) {
+    if (!dragRef.current) return
+    const idx = getIdxAt(e.clientX, e.clientY)
+    if (idx === null || idx === dragRef.current.lastIdx) return
+    dragRef.current.lastIdx = idx
+    const next = arcSet.map((v, i) => i === idx ? dragRef.current.targetState : v)
+    onChange(next)
+  }
+
+  function handlePointerUp() { dragRef.current = null }
+
+  const activeColor  = color
+  const activeBg     = color.replace('0.95)', '0.18)')
+  const activeBorder = color.replace('0.95)', '0.7)')
+
+  return (
+    <div className="arc-toggle-row">
+      <span className="arc-toggle-label" style={{ color }}>{label}</span>
+      <div
+        ref={containerRef}
+        className="arc-toggle-btns"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {arcSet.map((on, idx) => (
+          <div
+            key={idx}
+            data-arc-idx={idx}
+            className={'arc-btn' + (on ? ' arc-btn-on' : '')}
+            style={on ? {
+              background: activeBg,
+              borderColor: activeBorder,
+              color: activeColor,
+            } : undefined}
+          >
+            {idx + 1}
+          </div>
+        ))}
+      </div>
+      <button
+        className="arc-all-btn"
+        onClick={() => onChange(arcSet.map(() => true))}
+        title="All on"
+      >all</button>
+      <button
+        className="arc-all-btn"
+        onClick={() => onChange(arcSet.map(() => false))}
+        title="All off"
+      >off</button>
+    </div>
+  )
+}
 
 export default function App() {
   const canvasRef = useRef(null)
@@ -423,30 +503,19 @@ export default function App() {
                     </div>
                   )}
                   {vertexLabels.map((v, i) => {
-                    const sk = `suppress${v}`
-                    const rk = `arcRange${v}`
-                    const suppressed = !!selectedTileMeta[sk]
+                    const sk = `arcSet${v}`
                     const defaultMax = v === 'D' ? Math.min(2, aCount)
                                      : v === 'C' && !isSquareTruchet ? Math.min(3, aCount)
                                      : aCount
-                    const range = selectedTileMeta[rk] ?? [1, defaultMax]
+                    const arcSet = selectedTileMeta[sk] ?? new Array(defaultMax).fill(true)
                     return (
-                      <div key={v} className="control-group vertex-editor">
-                        <span className="vertex-label" style={{ color: vertColors[i] }}>{v}</span>
-                        <label className="suppress-label">
-                          <input type="checkbox" checked={suppressed}
-                            onChange={e => updateTileMeta({ [sk]: e.target.checked })} />
-                          off
-                        </label>
-                        <input type="range" min={1} max={Math.max(1, range[1])} value={range[0]}
-                          disabled={suppressed}
-                          className="arc-range-input"
-                          onChange={e => updateTileMeta({ [rk]: [Number(e.target.value), range[1]] })} />
-                        <input type="range" min={Math.min(range[0], aCount)} max={aCount} value={range[1]}
-                          disabled={suppressed}
-                          className="arc-range-input"
-                          onChange={e => updateTileMeta({ [rk]: [range[0], Number(e.target.value)] })} />
-                        <span className="slider-value">{range[0]}–{range[1]}</span>
+                      <div key={v} className="control-group">
+                        <ArcToggleRow
+                          arcSet={arcSet}
+                          color={vertColors[i]}
+                          label={v}
+                          onChange={next => updateTileMeta({ [sk]: next })}
+                        />
                       </div>
                     )
                   })}
