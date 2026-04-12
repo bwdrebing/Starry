@@ -472,6 +472,9 @@ ${overPaths}
       if (newIdx >= 0) { applyRadius(); draw() }
       return newIdx
     },
+    getShapes() {
+      return allShapesRef.current
+    },
   }))
 
   return (
