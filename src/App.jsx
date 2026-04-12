@@ -113,13 +113,14 @@ export default function App() {
         setSelectedTileMeta(prev => ({ ...prev, ...updates }))
         return
       }
-      // A/S/D — enable arcs A, B, C individually
-      const ARC_ENABLE = { a: 'suppressA', s: 'suppressB', d: 'suppressC' }
-      const arcKey = ARC_ENABLE[e.key.toLowerCase()]
+      // A/S/D — toggle arcs A, B, C individually
+      const ARC_TOGGLE = { a: 'suppressA', s: 'suppressB', d: 'suppressC' }
+      const arcKey = ARC_TOGGLE[e.key.toLowerCase()]
       if (arcKey) {
         e.preventDefault()
-        canvasRef.current?.updateTileMeta(selectedTileIdx, { [arcKey]: false })
-        setSelectedTileMeta(prev => ({ ...prev, [arcKey]: false }))
+        const newVal = !selectedTileMeta[arcKey]
+        canvasRef.current?.updateTileMeta(selectedTileIdx, { [arcKey]: newVal })
+        setSelectedTileMeta(prev => ({ ...prev, [arcKey]: newVal }))
         return
       }
 
