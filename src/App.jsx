@@ -89,20 +89,28 @@ export default function App() {
     function handleKeyDown(e) {
       if (selectedTileIdx < 0 || !selectedTileMeta) return
 
-      // Rotate right (])
-      if (e.key === ']') {
+      // Rotate right (W)
+      if (e.key === 'w' || e.key === 'W') {
         e.preventDefault()
         const newStartPt = (selectedTileMeta.startPt + 1) % 3
         canvasRef.current?.updateTileMeta(selectedTileIdx, { startPt: newStartPt })
         setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
         return
       }
-      // Rotate left ([)
-      if (e.key === '[') {
+      // Rotate left (Q)
+      if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         const newStartPt = (selectedTileMeta.startPt + 2) % 3
         canvasRef.current?.updateTileMeta(selectedTileIdx, { startPt: newStartPt })
         setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
+        return
+      }
+      // Backspace — suppress all arcs on the selected tile
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        const updates = { suppressA: true, suppressB: true, suppressC: true }
+        canvasRef.current?.updateTileMeta(selectedTileIdx, updates)
+        setSelectedTileMeta(prev => ({ ...prev, ...updates }))
         return
       }
 
