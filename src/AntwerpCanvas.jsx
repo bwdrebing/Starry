@@ -52,10 +52,62 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1 }, ref) {
+// Compute the dual tiling of `shapes`.
+//
+// For each vertex of the original tiling, collect which tiles meet there.
+// If 3 or more tiles share the vertex, their centroids (ordered angularly
+// around the vertex) form a polygon in the dual tiling.
+//
+// eps: pixel tolerance for identifying shared vertices (tile edges are
+// tens of pixels, so 1 px is safe against floating-point variation).
+function computeDualTiling(shapes, eps = 1.0) {
+  // Centroid of each shape (null if degenerate).
+  const centroids = shapes.map(([verts]) => {
+    if (!verts || verts.length < 3) return null
+    const n = verts.length
+    return [
+      verts.reduce((s, v) => s + v[0], 0) / n,
+      verts.reduce((s, v) => s + v[1], 0) / n,
+    ]
+  })
+
+  // Map from grid key → { px, py, indices: Set<shapeIndex> }
+  const grid = new Map()
+
+  for (let si = 0; si < shapes.length; si++) {
+    const [verts] = shapes[si]
+    if (!verts || verts.length < 3 || !centroids[si]) continue
+    for (const [vx, vy] of verts) {
+      const key = `${Math.round(vx / eps)},${Math.round(vy / eps)}`
+      if (!grid.has(key)) grid.set(key, { px: vx, py: vy, indices: new Set() })
+      grid.get(key).indices.add(si)
+    }
+  }
+
+  // For each vertex shared by 3+ tiles, create a dual polygon whose vertices
+  // are those tiles' centroids ordered angularly around the original vertex.
+  const dualShapes = []
+  for (const { px, py, indices } of grid.values()) {
+    if (indices.size < 3) continue
+    const pts = [...indices].map(si => centroids[si]).filter(Boolean)
+    if (pts.length < 3) continue
+
+    pts.sort((a, b) =>
+      Math.atan2(a[1] - py, a[0] - px) - Math.atan2(b[1] - py, b[0] - px)
+    )
+
+    dualShapes.push([pts, { dual: true }])
+  }
+
+  return dualShapes
+}
+
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, useDual = false }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
+  const allDualShapesRef = useRef([])
+  const dualShapesRef = useRef([])
   const transformRef = useRef({ x: 0, y: 0, scale: 1 })
   const gestureRef = useRef(null)
   const modeRef = useRef(mode)
@@ -76,12 +128,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
   const onTileClickRef      = useRef(onTileClick)
+  const useDualRef          = useRef(useDual)
 
-  // Filter allShapesRef by radius fraction and write result into shapesRef.
+  // Filter allShapesRef (and allDualShapesRef) by radius fraction.
+  // Both sets use the same maxDist from the original shapes so the radius
+  // slider has a consistent meaning regardless of dual mode.
   const applyRadius = useCallback(() => {
     const r = radiusRef.current
     const all = allShapesRef.current
-    if (r >= 1) { shapesRef.current = all; return }
+
     const dists = all.map(shape => {
       const raw = shape[0]
       if (!raw || raw.length < 3) return 0
@@ -91,7 +146,25 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       return Math.sqrt(cx * cx + cy * cy)
     })
     const maxDist = Math.max(...dists, 1e-8)
+
+    if (r >= 1) {
+      shapesRef.current = all
+      dualShapesRef.current = allDualShapesRef.current
+      return
+    }
+
     shapesRef.current = all.filter((_, i) => dists[i] <= r * maxDist)
+
+    const dualAll = allDualShapesRef.current
+    const dualDists = dualAll.map(shape => {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) return 0
+      const n = raw.length
+      const cx = raw.reduce((s, v) => s + v[0], 0) / n
+      const cy = raw.reduce((s, v) => s + v[1], 0) / n
+      return Math.sqrt(cx * cx + cy * cy)
+    })
+    dualShapesRef.current = dualAll.filter((_, i) => dualDists[i] <= r * maxDist)
   }, [])
 
   const draw = useCallback(() => {
@@ -108,6 +181,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     const firstMeta = shapesRef.current[0]?.[1]
     const isTruchet = firstMeta?.truchet === true || firstMeta?.squareTruchet === true
     isTruchetRef.current = isTruchet
+
+    // In dual mode, swap in the dual tiling for motif rendering.
+    const effectiveShapes = (!isTruchet && useDualRef.current)
+      ? dualShapesRef.current
+      : shapesRef.current
 
     ctx.save()
     ctx.translate(W / 2 + x, H / 2 + y)
@@ -152,7 +230,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         }
       }
     } else if (currentMode === 'tiling') {
-      for (const shape of shapesRef.current) {
+      for (const shape of effectiveShapes) {
         const vertices = shape[0]
         const meta     = shape[1]
         if (!vertices || vertices.length < 3) continue
@@ -174,7 +252,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
       // Faint polygon outlines
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'
-      for (const shape of shapesRef.current) {
+      for (const shape of effectiveShapes) {
         const vertices = shape[0]
         if (!vertices || vertices.length < 3) continue
         ctx.beginPath()
@@ -188,7 +266,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current)
+        drawHankin(ctx, effectiveShapes, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current)
       }
     }
 
@@ -212,9 +290,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     radiusRef.current = radius
     parquetFunctionRef.current = parquetFunction
     animSpeedRef.current = animSpeed
+    useDualRef.current = useDual
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, useDual, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -264,6 +343,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         allShapesRef.current = []
       }
     }
+
+    allDualShapesRef.current = computeDualTiling(allShapesRef.current)
     applyRadius()
 
     transformRef.current = { x: 0, y: 0, scale: 1 }
@@ -394,6 +475,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const { x, y, scale } = transformRef.current
       const shapes = shapesRef.current
 
+      // Use dual shapes for the SVG export when dual mode is active.
+      const effectiveShapes = (!isTruchetRef.current && useDualRef.current)
+        ? dualShapesRef.current
+        : shapes
+
       const px = n => n.toFixed(4)
 
       let motifContent = ''
@@ -408,7 +494,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         motifContent = `\n${pathEls}`
       } else if (showMotifRef.current) {
         const { underSegs, overSegs } = getHankinSegments(
-          shapes,
+          effectiveShapes,
           thetaRef.current, deltaRef.current,
           thickRef.current, overlapRef.current,
           overlapGapRef.current, bandWidthRef.current,
