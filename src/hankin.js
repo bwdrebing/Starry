@@ -70,11 +70,19 @@ function rayExitPolygon(origin, dir, vertices) {
 // halfThickDelta is also computed per-edge from thetaAt(mid) so that both tiles
 // sharing an edge use the same band offsets, keeping thick-band lines continuous
 // across tile boundaries.
-function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) {
+//
+// bandRefLen: reference length used for the thick-band offset. When null (default)
+// the per-edge length is used, which makes the visual band width proportional to the
+// edge length — correct for uniform tilings where all edges are the same size.
+// Pass the average edge length of the whole shape set to get a uniform visual band
+// width across tilings whose edge lengths vary (e.g. dual tilings).
+function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2, bandRefLen = null) {
   const n = vertices.length
   const c = centroid(vertices)
 
   // Build one array of edge-ray objects for a given per-edge delta function.
+  // deltaForEdge receives (theta, edgeLen) and returns a dimensionless delta;
+  // the actual pixel offset is deltaForEdge(...) * edgeLen * 0.5.
   const buildVariant = (deltaForEdge) => {
     const edges = []
     for (let i = 0; i < n; i++) {
@@ -86,7 +94,7 @@ function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) 
       if (dot2D(normal, sub2D(c, mid)) < 0) normal = [-normal[0], -normal[1]]
 
       const edgeTheta = thetaAt(mid[0], mid[1])
-      const offset = deltaForEdge(edgeTheta) * edgeLen * 0.5
+      const offset = deltaForEdge(edgeTheta, edgeLen) * edgeLen * 0.5
       // oLeft is offset toward vertex[i] (shared corner with edge i-1)
       // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
       const oLeft = sub2D(mid, scale2D(edgeDir, offset))
@@ -101,9 +109,18 @@ function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) 
   }
 
   if (!thick) return [buildVariant(() => delta)]
+
+  // Band contribution in dimensionless delta units: (bandWidth * refLen) / (cos(θ) * edgeLen).
+  // Multiplied by edgeLen*0.5 inside buildVariant, this yields an absolute pixel offset of
+  // bandWidth * refLen / (2 * cos(θ)), so the visual strand width = bandWidth * refLen —
+  // constant regardless of individual edge length.
+  // When bandRefLen is null, refLen = edgeLen and we recover the original edge-relative formula.
+  const bandDelta = (et, eLen) =>
+    Math.min(2, bandWidth * (bandRefLen ?? eLen) / (eLen * Math.cos(et)))
+
   return [
-    buildVariant(et => delta - Math.min(2, bandWidth / Math.cos(et))),
-    buildVariant(et => delta + Math.min(2, bandWidth / Math.cos(et))),
+    buildVariant((et, eLen) => delta - bandDelta(et, eLen)),
+    buildVariant((et, eLen) => delta + bandDelta(et, eLen)),
   ]
 }
 
@@ -227,6 +244,28 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   // continuity across tile boundaries.
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed)
 
+  // Compute average edge length as a global reference for thick-band width.
+  // Using the global average rather than per-edge length ensures the visual
+  // strand width is uniform even when edge lengths vary (e.g. in dual tilings).
+  // For tilings with uniform edge lengths this equals the per-edge length, so
+  // the rendered result is identical to the old per-edge behaviour.
+  let bandRefLen = null
+  if (thick) {
+    let totalLen = 0, count = 0
+    for (const shape of shapes) {
+      const raw = shape[0]
+      if (!raw || raw.length < 3) continue
+      const verts = ensureClockwise(raw)
+      const nv = verts.length
+      for (let i = 0; i < nv; i++) {
+        const [ax, ay] = verts[i], [bx, by] = verts[(i + 1) % nv]
+        totalLen += Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2)
+        count++
+      }
+    }
+    if (count > 0) bandRefLen = totalLen / count
+  }
+
   for (let si = 0; si < shapes.length; si++) {
     const shape = shapes[si]
     const raw = shape[0]
@@ -234,7 +273,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
-    const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
+    const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth, bandRefLen)
     const sp = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
         const j = (i + 1) % n
@@ -325,13 +364,29 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     ctx.save()
     ctx.lineWidth = 1 / (ctx.getTransform?.().a ?? 1)
 
+    let debugRefLen = null
+    if (thick) {
+      let totalLen = 0, count = 0
+      for (const shape of shapes) {
+        const raw = shape[0]
+        if (!raw || raw.length < 3) continue
+        const verts = ensureClockwise(raw)
+        for (let i = 0; i < verts.length; i++) {
+          const [ax, ay] = verts[i], [bx, by] = verts[(i + 1) % verts.length]
+          totalLen += Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2)
+          count++
+        }
+      }
+      if (count > 0) debugRefLen = totalLen / count
+    }
+
     for (const shape of shapes) {
       const raw = shape[0]
       if (!raw || raw.length < 3) continue
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
-      const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
+      const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth, debugRefLen)
       for (let di = 0; di < allEdgeRays.length; di++) {
         const edges = allEdgeRays[di]
         for (let i = 0; i < n; i++) {
