@@ -73,6 +73,7 @@ export default function App() {
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
+  const [useDual, setUseDual] = useState(false)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
@@ -190,6 +191,7 @@ export default function App() {
         <AntwerpCanvas
           ref={canvasRef}
           configuration={TILINGS[tilingIndex].config}
+          useDual={useDual}
           mode="motif"
           theta={thetaDeg * Math.PI / 180}
           parquetDirection={parquetDirection}
@@ -236,6 +238,18 @@ export default function App() {
                 </svg>
               </button>
             </div>
+
+            {!isAnyTruchet && (
+              <div className="control-group">
+                <label htmlFor="dual-check">Dual</label>
+                <input
+                  id="dual-check"
+                  type="checkbox"
+                  checked={useDual}
+                  onChange={e => setUseDual(e.target.checked)}
+                />
+              </div>
+            )}
 
             <div className="control-group">
               <label htmlFor="radius-slider">Radius</label>
