@@ -68,6 +68,11 @@ export default function App() {
   const [animSpeed, setAnimSpeed] = useState(1)
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
+  const [linearAngle, setLinearAngle] = useState(0)          // radians
+  const [parquetCenterX, setParquetCenterX] = useState(0)   // world coords
+  const [parquetCenterY, setParquetCenterY] = useState(0)
+  const [ellipseAngle, setEllipseAngle] = useState(0)        // radians
+  const [ellipseRatio, setEllipseRatio] = useState(1.0)
   const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
@@ -205,6 +210,18 @@ export default function App() {
           showMotif={showMotif}
           parquetFunction={parquetFunction}
           animSpeed={animSpeed}
+          linearAngle={linearAngle}
+          centerX={parquetCenterX}
+          centerY={parquetCenterY}
+          ellipseAngle={ellipseAngle}
+          ellipseRatio={ellipseRatio}
+          onParquetParamChange={updates => {
+            if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
+            if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
+            if (updates.centerY !== undefined) setParquetCenterY(updates.centerY)
+            if (updates.ellipseAngle !== undefined) setEllipseAngle(updates.ellipseAngle)
+            if (updates.ellipseRatio !== undefined) setEllipseRatio(updates.ellipseRatio)
+          }}
           onTileClick={(idx, meta) => {
             setSelectedTileIdx(idx)
             setSelectedTileMeta(meta)
@@ -279,30 +296,19 @@ export default function App() {
                 </button>
                 <button
                   className={parquetDirection === 'ltr' ? 'active' : ''}
-                  onClick={() => setParquetDirection('ltr')}
-                  title="Left to Right"
+                  onClick={() => { setParquetDirection('ltr'); setLinearAngle(0) }}
+                  title="Linear gradient (drag direction handle on canvas)"
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="2" y1="5" x2="14" y2="5"/><polyline points="12,3 14,5 12,7"/>
-                    <line x1="2" y1="10" x2="14" y2="10"/><polyline points="12,8 14,10 12,12"/>
-                    <line x1="2" y1="15" x2="14" y2="15"/><polyline points="12,13 14,15 12,17"/>
-                  </svg>
-                </button>
-                <button
-                  className={parquetDirection === 'btt' ? 'active' : ''}
-                  onClick={() => setParquetDirection('btt')}
-                  title="Bottom to Top"
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="5" y1="18" x2="5" y2="6"/><polyline points="3,8 5,6 7,8"/>
-                    <line x1="10" y1="18" x2="10" y2="6"/><polyline points="8,8 10,6 12,8"/>
-                    <line x1="15" y1="18" x2="15" y2="6"/><polyline points="13,8 15,6 17,8"/>
+                    <line x1="3" y1="10" x2="15" y2="10"/><polyline points="13,8 15,10 13,12"/>
+                    <path d="M 6,6 A 6 6 0 0 1 14,6" strokeWidth="1.2" strokeDasharray="2,1.5"/>
+                    <path d="M 6,14 A 6 6 0 0 0 14,14" strokeWidth="1.2" strokeDasharray="2,1.5"/>
                   </svg>
                 </button>
                 <button
                   className={parquetDirection === 'centered' ? 'active' : ''}
-                  onClick={() => setParquetDirection('centered')}
-                  title="Centered"
+                  onClick={() => { setParquetDirection('centered'); setParquetCenterX(0); setParquetCenterY(0) }}
+                  title="Radial gradient (drag handles on canvas)"
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none"/>
@@ -371,6 +377,47 @@ export default function App() {
                   </button>
                 </div>
               </div>
+            )}
+
+            {parquetDirection === 'ltr' && (
+              <div className="control-group">
+                <label htmlFor="linear-angle-slider">Direction</label>
+                <input
+                  id="linear-angle-slider"
+                  type="range"
+                  min={0} max={359} step={1}
+                  value={Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}
+                  onChange={e => setLinearAngle(Number(e.target.value) * Math.PI / 180)}
+                />
+                <span className="slider-value">{Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}°</span>
+              </div>
+            )}
+
+            {parquetDirection === 'centered' && (
+              <>
+                <div className="control-group">
+                  <label htmlFor="ellipse-angle-slider">Rotation</label>
+                  <input
+                    id="ellipse-angle-slider"
+                    type="range"
+                    min={0} max={179} step={1}
+                    value={Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}
+                    onChange={e => setEllipseAngle(Number(e.target.value) * Math.PI / 180)}
+                  />
+                  <span className="slider-value">{Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}°</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="ellipse-ratio-slider">Stretch</label>
+                  <input
+                    id="ellipse-ratio-slider"
+                    type="range"
+                    min={0.2} max={5} step={0.05}
+                    value={ellipseRatio}
+                    onChange={e => setEllipseRatio(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{ellipseRatio.toFixed(2)}×</span>
+                </div>
+              </>
             )}
 
             {parquetDirection === 'fn' && (
