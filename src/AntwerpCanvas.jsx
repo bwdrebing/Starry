@@ -373,20 +373,90 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     draw()
   }, [configuration, shapeSize, applyRadius, draw])
 
-  // Touch and wheel interaction
+  // All canvas interaction: pan/pinch/zoom, parquet handle drag (mouse + touch), cursor feedback.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // ── coordinate helpers ───────────────────────────────────────────────────
+    function cssToWorld(cssX, cssY) {
+      const rect = canvas.getBoundingClientRect()
+      const { x: px, y: py, scale } = transformRef.current
+      return [(cssX - rect.width / 2 - px) / scale, (cssY - rect.height / 2 - py) / scale]
+    }
+
+    function getHandleHit(wx, wy) {
+      const pd = parquetDirectionRef.current
+      if (pd !== 'ltr' && pd !== 'centered') return null
+      const { maxR } = boundsRef.current
+      const { scale } = transformRef.current
+      const HR = 18 / scale
+      const displayR = maxR * 0.58
+      if (pd === 'ltr') {
+        const a = linearAngleRef.current
+        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
+        if (Math.hypot(wx - hx, wy - hy) < HR || Math.hypot(wx + hx, wy + hy) < HR) return 'linear'
+      }
+      if (pd === 'centered') {
+        const cx2 = centerXRef.current, cy2 = centerYRef.current
+        const ea = ellipseAngleRef.current
+        const ratio = ellipseRatioRef.current || 1
+        const er = displayR
+        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
+        const rx2 = cx2 - Math.sin(ea) * er / ratio, ry2 = cy2 + Math.cos(ea) * er / ratio
+        if (Math.hypot(wx - ax, wy - ay) < HR) return 'ellipse-angle'
+        if (Math.hypot(wx - rx2, wy - ry2) < HR) return 'ellipse-ratio'
+        if (Math.hypot(wx - cx2, wy - cy2) < HR) return 'center'
+      }
+      return null
+    }
+
+    function applyHandleUpdate(handleType, wx, wy) {
+      const { maxR } = boundsRef.current
+      const displayR = maxR * 0.58
+      if (handleType === 'linear') {
+        const angle = Math.atan2(wy, wx)
+        linearAngleRef.current = angle
+        draw()
+        onParquetParamChangeRef.current?.({ linearAngle: angle })
+      } else if (handleType === 'center') {
+        centerXRef.current = wx; centerYRef.current = wy
+        draw()
+        onParquetParamChangeRef.current?.({ centerX: wx, centerY: wy })
+      } else if (handleType === 'ellipse-angle') {
+        const angle = Math.atan2(wy - centerYRef.current, wx - centerXRef.current)
+        ellipseAngleRef.current = angle
+        draw()
+        onParquetParamChangeRef.current?.({ ellipseAngle: angle })
+      } else if (handleType === 'ellipse-ratio') {
+        const ea = ellipseAngleRef.current
+        const minorX = -Math.sin(ea), minorY = Math.cos(ea)
+        const proj = Math.abs((wx - centerXRef.current) * minorX + (wy - centerYRef.current) * minorY)
+        const newRatio = Math.max(0.2, Math.min(5, displayR / Math.max(displayR * 0.1, proj)))
+        ellipseRatioRef.current = newRatio
+        draw()
+        onParquetParamChangeRef.current?.({ ellipseRatio: newRatio })
+      }
+    }
+
+    // ── touch events ──────────────────────────────────────────────────────────
     function onTouchStart(e) {
       e.preventDefault()
       if (e.touches.length === 1) {
+        const t = e.touches[0]
+        const rect = canvas.getBoundingClientRect()
+        const [wx, wy] = cssToWorld(t.clientX - rect.left, t.clientY - rect.top)
+        const hit = getHandleHit(wx, wy)
+        if (hit) {
+          gestureRef.current = { type: 'handle-drag', handleType: hit }
+          return
+        }
         gestureRef.current = {
           type: 'pan',
-          startX: e.touches[0].clientX - transformRef.current.x,
-          startY: e.touches[0].clientY - transformRef.current.y,
-          startClientX: e.touches[0].clientX,
-          startClientY: e.touches[0].clientY,
+          startX: t.clientX - transformRef.current.x,
+          startY: t.clientY - transformRef.current.y,
+          startClientX: t.clientX,
+          startClientY: t.clientY,
           moved: false,
         }
       } else if (e.touches.length === 2) {
@@ -404,10 +474,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       e.preventDefault()
       const g = gestureRef.current
       if (!g) return
-      if (g.type === 'pan' && e.touches.length === 1) {
+      if (g.type === 'handle-drag' && e.touches.length === 1) {
+        const t = e.touches[0]
+        const rect = canvas.getBoundingClientRect()
+        const [wx, wy] = cssToWorld(t.clientX - rect.left, t.clientY - rect.top)
+        applyHandleUpdate(g.handleType, wx, wy)
+      } else if (g.type === 'pan' && e.touches.length === 1) {
         const ddx = e.touches[0].clientX - g.startClientX
         const ddy = e.touches[0].clientY - g.startClientY
-        if (ddx * ddx + ddy * ddy > 64) g.moved = true  // >8px = pan, not tap
+        if (ddx * ddx + ddy * ddy > 64) g.moved = true
         transformRef.current.x = e.touches[0].clientX - g.startX
         transformRef.current.y = e.touches[0].clientY - g.startY
         draw()
@@ -425,29 +500,63 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     function onTouchEnd() {
       const g = gestureRef.current
-      // A single-finger touch that didn't move is a tap → run hit test
       if (g?.type === 'pan' && !g.moved && isTruchetRef.current) {
-        const canvas = canvasRef.current
-        if (canvas) {
-          const rect = canvas.getBoundingClientRect()
-          const cx = g.startClientX - rect.left
-          const cy = g.startClientY - rect.top
-          const { x, y, scale } = transformRef.current
-          const dx = (cx - canvas.width / 2 - x) / scale
-          const dy = (cy - canvas.height / 2 - y) / scale
-          for (const [pts, meta] of shapesRef.current) {
-            if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
-              onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
-              gestureRef.current = null
-              return
-            }
+        const rect = canvas.getBoundingClientRect()
+        const cx = g.startClientX - rect.left
+        const cy = g.startClientY - rect.top
+        const { x, y, scale } = transformRef.current
+        const dx = (cx - rect.width / 2 - x) / scale
+        const dy = (cy - rect.height / 2 - y) / scale
+        for (const [pts, meta] of shapesRef.current) {
+          if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
+            onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
+            gestureRef.current = null
+            return
           }
-          onTileClickRef.current?.(-1, null)
         }
+        onTileClickRef.current?.(-1, null)
       }
       gestureRef.current = null
     }
 
+    // ── mouse events ──────────────────────────────────────────────────────────
+    let mouseDragging = null
+
+    function onMouseDown(e) {
+      if (e.button !== 0) return
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      const hit = getHandleHit(wx, wy)
+      if (hit) {
+        mouseDragging = hit
+        canvas.style.cursor = 'grabbing'
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    function onMouseMove(e) {
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      if (mouseDragging) {
+        applyHandleUpdate(mouseDragging, wx, wy)
+        e.preventDefault()
+        return
+      }
+      // Cursor feedback when hovering over a handle
+      const hit = getHandleHit(wx, wy)
+      canvas.style.cursor = hit ? 'grab' : ''
+    }
+
+    function onMouseUp(e) {
+      if (!mouseDragging) return
+      mouseDragging = null
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      canvas.style.cursor = getHandleHit(wx, wy) ? 'grab' : ''
+    }
+
+    // ── wheel zoom ────────────────────────────────────────────────────────────
     function onWheel(e) {
       e.preventDefault()
       const factor = e.deltaY > 0 ? 0.9 : 1.1
@@ -455,16 +564,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       draw()
     }
 
+    // ── click (truchet tile selection) ────────────────────────────────────────
     function onCanvasClick(e) {
       if (!isTruchetRef.current) return
       const rect = canvas.getBoundingClientRect()
       const cx = e.clientX - rect.left
       const cy = e.clientY - rect.top
       const { x, y, scale } = transformRef.current
-      const W = canvas.width
-      const H = canvas.height
-      const dx = (cx - W / 2 - x) / scale
-      const dy = (cy - H / 2 - y) / scale
+      const dx = (cx - rect.width / 2 - x) / scale
+      const dy = (cy - rect.height / 2 - y) / scale
       for (const [pts, meta] of shapesRef.current) {
         if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
           onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
@@ -479,108 +587,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.addEventListener('touchend', onTouchEnd)
     canvas.addEventListener('wheel', onWheel, { passive: false })
     canvas.addEventListener('click', onCanvasClick)
+    canvas.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
     return () => {
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)
       canvas.removeEventListener('touchend', onTouchEnd)
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('click', onCanvasClick)
-    }
-  }, [draw])
-
-  // Mouse drag handlers for parquet control handles (linear angle, center, ellipse).
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    let dragging = null  // 'linear' | 'center' | 'ellipse-angle' | 'ellipse-ratio'
-
-    function cssToWorld(cssX, cssY) {
-      const { x: px, y: py, scale } = transformRef.current
-      return [(cssX - canvas.width / 2 - px) / scale, (cssY - canvas.height / 2 - py) / scale]
-    }
-
-    function getHandleHit(wx, wy) {
-      const pd = parquetDirectionRef.current
-      if (pd !== 'ltr' && pd !== 'centered') return null
-      const { maxR } = boundsRef.current
-      const { scale } = transformRef.current
-      const HR = 14 / scale
-      const displayR = maxR * 0.58
-
-      if (pd === 'ltr') {
-        const a = linearAngleRef.current
-        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
-        if (Math.hypot(wx - hx, wy - hy) < HR || Math.hypot(wx + hx, wy + hy) < HR) return 'linear'
-      }
-
-      if (pd === 'centered') {
-        const cx2 = centerXRef.current, cy2 = centerYRef.current
-        const ea = ellipseAngleRef.current
-        const ratio = ellipseRatioRef.current || 1
-        const er = displayR
-        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
-        const rx2 = cx2 - Math.sin(ea) * er / ratio, ry2 = cy2 + Math.cos(ea) * er / ratio
-        if (Math.hypot(wx - ax, wy - ay) < HR) return 'ellipse-angle'
-        if (Math.hypot(wx - rx2, wy - ry2) < HR) return 'ellipse-ratio'
-        if (Math.hypot(wx - cx2, wy - cy2) < HR) return 'center'
-      }
-
-      return null
-    }
-
-    function onMouseDown(e) {
-      if (e.button !== 0) return
-      const rect = canvas.getBoundingClientRect()
-      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
-      const hit = getHandleHit(wx, wy)
-      if (hit) { dragging = hit; e.preventDefault(); e.stopPropagation() }
-    }
-
-    function onMouseMove(e) {
-      if (!dragging) return
-      const rect = canvas.getBoundingClientRect()
-      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
-      const { maxR } = boundsRef.current
-      const displayR = maxR * 0.58
-
-      if (dragging === 'linear') {
-        const angle = Math.atan2(wy, wx)
-        linearAngleRef.current = angle
-        draw()
-        onParquetParamChangeRef.current?.({ linearAngle: angle })
-      }
-      if (dragging === 'center') {
-        centerXRef.current = wx; centerYRef.current = wy
-        draw()
-        onParquetParamChangeRef.current?.({ centerX: wx, centerY: wy })
-      }
-      if (dragging === 'ellipse-angle') {
-        const cx2 = centerXRef.current, cy2 = centerYRef.current
-        const angle = Math.atan2(wy - cy2, wx - cx2)
-        ellipseAngleRef.current = angle
-        draw()
-        onParquetParamChangeRef.current?.({ ellipseAngle: angle })
-      }
-      if (dragging === 'ellipse-ratio') {
-        const cx2 = centerXRef.current, cy2 = centerYRef.current
-        const ea = ellipseAngleRef.current
-        const minorX = -Math.sin(ea), minorY = Math.cos(ea)
-        const proj = Math.abs((wx - cx2) * minorX + (wy - cy2) * minorY)
-        const newRatio = Math.max(0.2, Math.min(5, displayR / Math.max(displayR * 0.1, proj)))
-        ellipseRatioRef.current = newRatio
-        draw()
-        onParquetParamChangeRef.current?.({ ellipseRatio: newRatio })
-      }
-      e.preventDefault()
-    }
-
-    function onMouseUp() { dragging = null }
-
-    canvas.addEventListener('mousedown', onMouseDown)
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
       canvas.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
