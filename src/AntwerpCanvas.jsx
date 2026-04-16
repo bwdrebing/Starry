@@ -52,7 +52,7 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1 }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, onParquetParamChange = null }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -73,6 +73,13 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const radiusRef = useRef(radius)
   const parquetFunctionRef = useRef(parquetFunction)
   const animSpeedRef = useRef(animSpeed)
+  const linearAngleRef = useRef(linearAngle)
+  const centerXRef = useRef(centerX)
+  const centerYRef = useRef(centerY)
+  const ellipseAngleRef = useRef(ellipseAngle)
+  const ellipseRatioRef = useRef(ellipseRatio)
+  const onParquetParamChangeRef = useRef(onParquetParamChange)
+  const boundsRef = useRef({ minX: -200, maxX: 200, minY: -200, maxY: 200, maxR: 200 })
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
   const onTileClickRef      = useRef(onTileClick)
@@ -81,17 +88,29 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const applyRadius = useCallback(() => {
     const r = radiusRef.current
     const all = allShapesRef.current
-    if (r >= 1) { shapesRef.current = all; return }
-    const dists = all.map(shape => {
-      const raw = shape[0]
-      if (!raw || raw.length < 3) return 0
-      const n = raw.length
-      const cx = raw.reduce((s, v) => s + v[0], 0) / n
-      const cy = raw.reduce((s, v) => s + v[1], 0) / n
-      return Math.sqrt(cx * cx + cy * cy)
-    })
-    const maxDist = Math.max(...dists, 1e-8)
-    shapesRef.current = all.filter((_, i) => dists[i] <= r * maxDist)
+    if (r >= 1) { shapesRef.current = all } else {
+      const dists = all.map(shape => {
+        const raw = shape[0]
+        if (!raw || raw.length < 3) return 0
+        const n = raw.length
+        const cx = raw.reduce((s, v) => s + v[0], 0) / n
+        const cy = raw.reduce((s, v) => s + v[1], 0) / n
+        return Math.sqrt(cx * cx + cy * cy)
+      })
+      const maxDist = Math.max(...dists, 1e-8)
+      shapesRef.current = all.filter((_, i) => dists[i] <= r * maxDist)
+    }
+    // Recompute spatial bounds used for handle positioning.
+    let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity, bMaxR = 0
+    for (const shape of shapesRef.current) {
+      const raw = shape[0]; if (!raw) continue
+      for (const [x, y] of raw) {
+        if (x < bMinX) bMinX = x; if (x > bMaxX) bMaxX = x
+        if (y < bMinY) bMinY = y; if (y > bMaxY) bMaxY = y
+        const rr = Math.sqrt(x * x + y * y); if (rr > bMaxR) bMaxR = rr
+      }
+    }
+    if (bMaxR > 0) boundsRef.current = { minX: bMinX, maxX: bMaxX, minY: bMinY, maxY: bMaxY, maxR: bMaxR }
   }, [])
 
   const draw = useCallback(() => {
@@ -188,8 +207,86 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current)
       }
+    }
+
+    // Interactive control handles for linear and centered parquet modes.
+    const pd = parquetDirectionRef.current
+    if (pd === 'ltr' || pd === 'centered') {
+      const { maxR } = boundsRef.current
+      const displayR = maxR * 0.58
+      const hr = 8 / scale
+      const lw = 1.5 / scale
+
+      ctx.save()
+      ctx.lineWidth = lw
+
+      if (pd === 'ltr') {
+        const a = linearAngleRef.current
+        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
+
+        ctx.strokeStyle = 'rgba(255,210,60,0.75)'
+        ctx.setLineDash([5 / scale, 4 / scale])
+        ctx.beginPath(); ctx.moveTo(-hx, -hy); ctx.lineTo(hx, hy); ctx.stroke()
+        ctx.setLineDash([])
+
+        // Arrowhead at the positive end
+        const as = hr * 1.3
+        const px = -Math.sin(a), py = Math.cos(a)
+        ctx.beginPath()
+        ctx.moveTo(hx, hy)
+        ctx.lineTo(hx - Math.cos(a) * as + px * as * 0.5, hy - Math.sin(a) * as + py * as * 0.5)
+        ctx.moveTo(hx, hy)
+        ctx.lineTo(hx - Math.cos(a) * as - px * as * 0.5, hy - Math.sin(a) * as - py * as * 0.5)
+        ctx.stroke()
+
+        ctx.fillStyle = 'rgba(255,210,60,0.9)'
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+        for (const [px2, py2] of [[hx, hy], [-hx, -hy]]) {
+          ctx.beginPath(); ctx.arc(px2, py2, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        }
+      }
+
+      if (pd === 'centered') {
+        const cx2 = centerXRef.current, cy2 = centerYRef.current
+        const ea = ellipseAngleRef.current
+        const ratio = ellipseRatioRef.current || 1
+        const er = displayR
+        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
+        const minorX = -Math.sin(ea), minorY = Math.cos(ea)
+        const rx2 = cx2 + minorX * er / ratio, ry2 = cy2 + minorY * er / ratio
+
+        // Ellipse outline
+        ctx.strokeStyle = 'rgba(255,210,60,0.45)'
+        ctx.setLineDash([5 / scale, 4 / scale])
+        ctx.save()
+        ctx.translate(cx2, cy2); ctx.rotate(ea)
+        ctx.beginPath(); ctx.ellipse(0, 0, er, er / ratio, 0, 0, Math.PI * 2); ctx.stroke()
+        ctx.restore()
+        ctx.setLineDash([])
+
+        // Spoke lines from center to handles
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+        ctx.beginPath()
+        ctx.moveTo(cx2, cy2); ctx.lineTo(ax, ay)
+        ctx.moveTo(cx2, cy2); ctx.lineTo(rx2, ry2)
+        ctx.stroke()
+
+        // Center handle (gold)
+        ctx.fillStyle = 'rgba(255,210,60,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+        ctx.beginPath(); ctx.arc(cx2, cy2, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+
+        // Rotation handle (blue) — drags to change ellipse angle
+        ctx.fillStyle = 'rgba(80,180,255,0.9)'
+        ctx.beginPath(); ctx.arc(ax, ay, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+
+        // Ratio handle (green) — drags to change ellipse ratio (minor axis)
+        ctx.fillStyle = 'rgba(80,235,110,0.9)'
+        ctx.beginPath(); ctx.arc(rx2, ry2, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      }
+
+      ctx.restore()
     }
 
     ctx.restore()
@@ -212,9 +309,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     radiusRef.current = radius
     parquetFunctionRef.current = parquetFunction
     animSpeedRef.current = animSpeed
+    linearAngleRef.current = linearAngle
+    centerXRef.current = centerX
+    centerYRef.current = centerY
+    ellipseAngleRef.current = ellipseAngle
+    ellipseRatioRef.current = ellipseRatio
+    onParquetParamChangeRef.current = onParquetParamChange
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio, onParquetParamChange, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -270,20 +373,90 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     draw()
   }, [configuration, shapeSize, applyRadius, draw])
 
-  // Touch and wheel interaction
+  // All canvas interaction: pan/pinch/zoom, parquet handle drag (mouse + touch), cursor feedback.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
+    // ── coordinate helpers ───────────────────────────────────────────────────
+    function cssToWorld(cssX, cssY) {
+      const rect = canvas.getBoundingClientRect()
+      const { x: px, y: py, scale } = transformRef.current
+      return [(cssX - rect.width / 2 - px) / scale, (cssY - rect.height / 2 - py) / scale]
+    }
+
+    function getHandleHit(wx, wy) {
+      const pd = parquetDirectionRef.current
+      if (pd !== 'ltr' && pd !== 'centered') return null
+      const { maxR } = boundsRef.current
+      const { scale } = transformRef.current
+      const HR = 18 / scale
+      const displayR = maxR * 0.58
+      if (pd === 'ltr') {
+        const a = linearAngleRef.current
+        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
+        if (Math.hypot(wx - hx, wy - hy) < HR || Math.hypot(wx + hx, wy + hy) < HR) return 'linear'
+      }
+      if (pd === 'centered') {
+        const cx2 = centerXRef.current, cy2 = centerYRef.current
+        const ea = ellipseAngleRef.current
+        const ratio = ellipseRatioRef.current || 1
+        const er = displayR
+        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
+        const rx2 = cx2 - Math.sin(ea) * er / ratio, ry2 = cy2 + Math.cos(ea) * er / ratio
+        if (Math.hypot(wx - ax, wy - ay) < HR) return 'ellipse-angle'
+        if (Math.hypot(wx - rx2, wy - ry2) < HR) return 'ellipse-ratio'
+        if (Math.hypot(wx - cx2, wy - cy2) < HR) return 'center'
+      }
+      return null
+    }
+
+    function applyHandleUpdate(handleType, wx, wy) {
+      const { maxR } = boundsRef.current
+      const displayR = maxR * 0.58
+      if (handleType === 'linear') {
+        const angle = Math.atan2(wy, wx)
+        linearAngleRef.current = angle
+        draw()
+        onParquetParamChangeRef.current?.({ linearAngle: angle })
+      } else if (handleType === 'center') {
+        centerXRef.current = wx; centerYRef.current = wy
+        draw()
+        onParquetParamChangeRef.current?.({ centerX: wx, centerY: wy })
+      } else if (handleType === 'ellipse-angle') {
+        const angle = Math.atan2(wy - centerYRef.current, wx - centerXRef.current)
+        ellipseAngleRef.current = angle
+        draw()
+        onParquetParamChangeRef.current?.({ ellipseAngle: angle })
+      } else if (handleType === 'ellipse-ratio') {
+        const ea = ellipseAngleRef.current
+        const minorX = -Math.sin(ea), minorY = Math.cos(ea)
+        const proj = Math.abs((wx - centerXRef.current) * minorX + (wy - centerYRef.current) * minorY)
+        const newRatio = Math.max(0.2, Math.min(5, displayR / Math.max(displayR * 0.1, proj)))
+        ellipseRatioRef.current = newRatio
+        draw()
+        onParquetParamChangeRef.current?.({ ellipseRatio: newRatio })
+      }
+    }
+
+    // ── touch events ──────────────────────────────────────────────────────────
     function onTouchStart(e) {
       e.preventDefault()
       if (e.touches.length === 1) {
+        const t = e.touches[0]
+        const rect = canvas.getBoundingClientRect()
+        const [wx, wy] = cssToWorld(t.clientX - rect.left, t.clientY - rect.top)
+        const hit = getHandleHit(wx, wy)
+        if (hit) {
+          gestureRef.current = { type: 'handle-drag', handleType: hit }
+          return
+        }
         gestureRef.current = {
           type: 'pan',
-          startX: e.touches[0].clientX - transformRef.current.x,
-          startY: e.touches[0].clientY - transformRef.current.y,
-          startClientX: e.touches[0].clientX,
-          startClientY: e.touches[0].clientY,
+          startX: t.clientX - transformRef.current.x,
+          startY: t.clientY - transformRef.current.y,
+          startClientX: t.clientX,
+          startClientY: t.clientY,
           moved: false,
         }
       } else if (e.touches.length === 2) {
@@ -301,10 +474,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       e.preventDefault()
       const g = gestureRef.current
       if (!g) return
-      if (g.type === 'pan' && e.touches.length === 1) {
+      if (g.type === 'handle-drag' && e.touches.length === 1) {
+        const t = e.touches[0]
+        const rect = canvas.getBoundingClientRect()
+        const [wx, wy] = cssToWorld(t.clientX - rect.left, t.clientY - rect.top)
+        applyHandleUpdate(g.handleType, wx, wy)
+      } else if (g.type === 'pan' && e.touches.length === 1) {
         const ddx = e.touches[0].clientX - g.startClientX
         const ddy = e.touches[0].clientY - g.startClientY
-        if (ddx * ddx + ddy * ddy > 64) g.moved = true  // >8px = pan, not tap
+        if (ddx * ddx + ddy * ddy > 64) g.moved = true
         transformRef.current.x = e.touches[0].clientX - g.startX
         transformRef.current.y = e.touches[0].clientY - g.startY
         draw()
@@ -322,29 +500,63 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     function onTouchEnd() {
       const g = gestureRef.current
-      // A single-finger touch that didn't move is a tap → run hit test
       if (g?.type === 'pan' && !g.moved && isTruchetRef.current) {
-        const canvas = canvasRef.current
-        if (canvas) {
-          const rect = canvas.getBoundingClientRect()
-          const cx = g.startClientX - rect.left
-          const cy = g.startClientY - rect.top
-          const { x, y, scale } = transformRef.current
-          const dx = (cx - canvas.width / 2 - x) / scale
-          const dy = (cy - canvas.height / 2 - y) / scale
-          for (const [pts, meta] of shapesRef.current) {
-            if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
-              onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
-              gestureRef.current = null
-              return
-            }
+        const rect = canvas.getBoundingClientRect()
+        const cx = g.startClientX - rect.left
+        const cy = g.startClientY - rect.top
+        const { x, y, scale } = transformRef.current
+        const dx = (cx - rect.width / 2 - x) / scale
+        const dy = (cy - rect.height / 2 - y) / scale
+        for (const [pts, meta] of shapesRef.current) {
+          if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
+            onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
+            gestureRef.current = null
+            return
           }
-          onTileClickRef.current?.(-1, null)
         }
+        onTileClickRef.current?.(-1, null)
       }
       gestureRef.current = null
     }
 
+    // ── mouse events ──────────────────────────────────────────────────────────
+    let mouseDragging = null
+
+    function onMouseDown(e) {
+      if (e.button !== 0) return
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      const hit = getHandleHit(wx, wy)
+      if (hit) {
+        mouseDragging = hit
+        canvas.style.cursor = 'grabbing'
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    function onMouseMove(e) {
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      if (mouseDragging) {
+        applyHandleUpdate(mouseDragging, wx, wy)
+        e.preventDefault()
+        return
+      }
+      // Cursor feedback when hovering over a handle
+      const hit = getHandleHit(wx, wy)
+      canvas.style.cursor = hit ? 'grab' : ''
+    }
+
+    function onMouseUp(e) {
+      if (!mouseDragging) return
+      mouseDragging = null
+      const rect = canvas.getBoundingClientRect()
+      const [wx, wy] = cssToWorld(e.clientX - rect.left, e.clientY - rect.top)
+      canvas.style.cursor = getHandleHit(wx, wy) ? 'grab' : ''
+    }
+
+    // ── wheel zoom ────────────────────────────────────────────────────────────
     function onWheel(e) {
       e.preventDefault()
       const factor = e.deltaY > 0 ? 0.9 : 1.1
@@ -352,16 +564,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       draw()
     }
 
+    // ── click (truchet tile selection) ────────────────────────────────────────
     function onCanvasClick(e) {
       if (!isTruchetRef.current) return
       const rect = canvas.getBoundingClientRect()
       const cx = e.clientX - rect.left
       const cy = e.clientY - rect.top
       const { x, y, scale } = transformRef.current
-      const W = canvas.width
-      const H = canvas.height
-      const dx = (cx - W / 2 - x) / scale
-      const dy = (cy - H / 2 - y) / scale
+      const dx = (cx - rect.width / 2 - x) / scale
+      const dy = (cy - rect.height / 2 - y) / scale
       for (const [pts, meta] of shapesRef.current) {
         if (pts?.length >= 3 && pointInPoly(dx, dy, pts)) {
           onTileClickRef.current?.(meta._idx ?? -1, { ...meta })
@@ -376,12 +587,18 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.addEventListener('touchend', onTouchEnd)
     canvas.addEventListener('wheel', onWheel, { passive: false })
     canvas.addEventListener('click', onCanvasClick)
+    canvas.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
     return () => {
       canvas.removeEventListener('touchstart', onTouchStart)
       canvas.removeEventListener('touchmove', onTouchMove)
       canvas.removeEventListener('touchend', onTouchEnd)
       canvas.removeEventListener('wheel', onWheel)
       canvas.removeEventListener('click', onCanvasClick)
+      canvas.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
     }
   }, [draw])
 
@@ -413,7 +630,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           thickRef.current, overlapRef.current,
           overlapGapRef.current, bandWidthRef.current,
           parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current,
-          parquetFunctionRef.current, 0
+          parquetFunctionRef.current, 0, 1,
+          linearAngleRef.current, centerXRef.current, centerYRef.current,
+          ellipseAngleRef.current, ellipseRatioRef.current
         )
         const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
         const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
