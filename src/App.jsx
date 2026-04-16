@@ -71,8 +71,9 @@ export default function App() {
   const [linearAngle, setLinearAngle] = useState(0)          // radians
   const [parquetCenterX, setParquetCenterX] = useState(0)   // world coords
   const [parquetCenterY, setParquetCenterY] = useState(0)
-  const [ellipseAngle, setEllipseAngle] = useState(0)        // radians
-  const [ellipseRatio, setEllipseRatio] = useState(1.0)
+  const [ellipseAngle, setEllipseAngle] = useState(0)         // radians
+  const [ellipseMajorScale, setEllipseMajorScale] = useState(1.0)
+  const [ellipseMinorScale, setEllipseMinorScale] = useState(1.0)
   const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
@@ -214,13 +215,15 @@ export default function App() {
           centerX={parquetCenterX}
           centerY={parquetCenterY}
           ellipseAngle={ellipseAngle}
-          ellipseRatio={ellipseRatio}
+          ellipseMajorScale={ellipseMajorScale}
+          ellipseMinorScale={ellipseMinorScale}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
             if (updates.centerY !== undefined) setParquetCenterY(updates.centerY)
             if (updates.ellipseAngle !== undefined) setEllipseAngle(updates.ellipseAngle)
-            if (updates.ellipseRatio !== undefined) setEllipseRatio(updates.ellipseRatio)
+            if (updates.ellipseMajorScale !== undefined) setEllipseMajorScale(updates.ellipseMajorScale)
+            if (updates.ellipseMinorScale !== undefined) setEllipseMinorScale(updates.ellipseMinorScale)
           }}
           onTileClick={(idx, meta) => {
             setSelectedTileIdx(idx)
@@ -407,15 +410,26 @@ export default function App() {
                   <span className="slider-value">{Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}°</span>
                 </div>
                 <div className="control-group">
-                  <label htmlFor="ellipse-ratio-slider">Stretch</label>
+                  <label htmlFor="ellipse-major-slider">Major</label>
                   <input
-                    id="ellipse-ratio-slider"
+                    id="ellipse-major-slider"
                     type="range"
-                    min={0.2} max={5} step={0.05}
-                    value={ellipseRatio}
-                    onChange={e => setEllipseRatio(Number(e.target.value))}
+                    min={0.1} max={5} step={0.05}
+                    value={ellipseMajorScale}
+                    onChange={e => setEllipseMajorScale(Number(e.target.value))}
                   />
-                  <span className="slider-value">{ellipseRatio.toFixed(2)}×</span>
+                  <span className="slider-value">{ellipseMajorScale.toFixed(2)}×</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="ellipse-minor-slider">Minor</label>
+                  <input
+                    id="ellipse-minor-slider"
+                    type="range"
+                    min={0.1} max={5} step={0.05}
+                    value={ellipseMinorScale}
+                    onChange={e => setEllipseMinorScale(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{ellipseMinorScale.toFixed(2)}×</span>
                 </div>
               </>
             )}
