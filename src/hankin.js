@@ -243,16 +243,27 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 // Returns a coordinate-space warp function (x,y)→[wx,wy] for geometric distortion,
 // or null when no warp is active. Segments are sampled at multiple points along
 // their length so the warp produces actual curved lines rather than relocated straights.
-// cx/cy is the warp centre — matched to the radial parquet centre.
-function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0) {
+// cx/cy, ellipseAngle and ellipseRatio are matched to the radial parquet parameters so
+// the warp falloff has exactly the same elliptical footprint as the angle gradient.
+function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0, ellipseAngle = 0, ellipseRatio = 1) {
   if (parquetEffect === 'none' || effectStrength <= 0 || maxR <= 0) return null
   const sigma2 = 2 * (effectRadius * maxR) ** 2 || 1e-8
+  const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
+  const safeRatio = ellipseRatio || 1
+
+  // Ellipse-frame squared distance — mirrors buildThetaAt's 'centered' transform so the
+  // Gaussian falloff has the same shape and orientation as the angle gradient.
+  const ellipseDist2 = (dx, dy) => {
+    const lx = (dx * cosA + dy * sinA) / safeRatio
+    const ly = -dx * sinA + dy * cosA
+    return lx * lx + ly * ly
+  }
 
   if (parquetEffect === 'bulge') {
     // Push points radially away from the warp centre.
     return (x, y) => {
       const dx = x - cx, dy = y - cy
-      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
+      const bump = Math.exp(-ellipseDist2(dx, dy) / sigma2)
       const s = 1 + effectStrength * bump
       return [cx + dx * s, cy + dy * s]
     }
@@ -261,7 +272,7 @@ function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, 
     // Pull points radially toward the warp centre.
     return (x, y) => {
       const dx = x - cx, dy = y - cy
-      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
+      const bump = Math.exp(-ellipseDist2(dx, dy) / sigma2)
       const s = Math.max(0.05, 1 - effectStrength * bump)
       return [cx + dx * s, cy + dy * s]
     }
@@ -270,7 +281,7 @@ function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, 
     // Rotate points around the warp centre by an angle that falls off with distance.
     return (x, y) => {
       const dx = x - cx, dy = y - cy
-      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
+      const bump = Math.exp(-ellipseDist2(dx, dy) / sigma2)
       const a = effectStrength * Math.PI * bump
       const cos = Math.cos(a), sin = Math.sin(a)
       return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos]
@@ -374,17 +385,18 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
 
   // Build a geometric coordinate warp — only available for the radial (centered) parquet
   // mode, and centred at the same point as the radial gradient.
+  // maxR measured from origin, matching buildThetaAt's 'centered' normalisation.
   let maxR = 0
   if (parquetDirection === 'centered' && parquetEffect !== 'none' && effectStrength > 0) {
     for (const shape of shapes) {
       const raw = shape[0]; if (!raw) continue
       for (const [x, y] of raw) {
-        const r = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2); if (r > maxR) maxR = r
+        const r = Math.sqrt(x * x + y * y); if (r > maxR) maxR = r
       }
     }
   }
   const warpFn = parquetDirection === 'centered'
-    ? buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, centerX, centerY)
+    ? buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, centerX, centerY, ellipseAngle, ellipseRatio)
     : null
 
   // Draw one segment, subdivided so the geometric warp produces curved lines.
