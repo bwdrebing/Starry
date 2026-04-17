@@ -638,8 +638,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current,
           parquetFunctionRef.current, 0, 1,
           linearAngleRef.current, centerXRef.current, centerYRef.current,
-          ellipseAngleRef.current, ellipseRatioRef.current,
-          parquetEffectRef.current, effectStrengthRef.current, effectRadiusRef.current
+          ellipseAngleRef.current, ellipseRatioRef.current
         )
         const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
         const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
