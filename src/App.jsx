@@ -73,6 +73,9 @@ export default function App() {
   const [parquetCenterY, setParquetCenterY] = useState(0)
   const [ellipseAngle, setEllipseAngle] = useState(0)        // radians
   const [ellipseRatio, setEllipseRatio] = useState(1.0)
+  const [parquetEffect, setParquetEffect] = useState('none')
+  const [effectStrength, setEffectStrength] = useState(0.5)
+  const [effectRadius, setEffectRadius] = useState(0.4)
   const [radius, setRadius] = useState(1)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
@@ -215,6 +218,9 @@ export default function App() {
           centerY={parquetCenterY}
           ellipseAngle={ellipseAngle}
           ellipseRatio={ellipseRatio}
+          parquetEffect={parquetEffect}
+          effectStrength={effectStrength}
+          effectRadius={effectRadius}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
@@ -469,6 +475,48 @@ export default function App() {
                     onChange={e => setThetaMaxDeg(Number(e.target.value))}
                   />
                   <span className="slider-value">{thetaMaxDeg}°</span>
+                </div>
+              </>
+            )}
+
+            <div className="control-group">
+              <label htmlFor="effect-select">Effect</label>
+              <select
+                id="effect-select"
+                value={parquetEffect}
+                onChange={e => setParquetEffect(e.target.value)}
+                className="effect-select"
+              >
+                <option value="none">None</option>
+                <option value="bulge">Bulge</option>
+                <option value="pinch">Pinch</option>
+                <option value="twist">Twist</option>
+              </select>
+            </div>
+
+            {parquetEffect !== 'none' && (
+              <>
+                <div className="control-group">
+                  <label htmlFor="effect-strength-slider">Strength</label>
+                  <input
+                    id="effect-strength-slider"
+                    type="range"
+                    min={0} max={1} step={0.05}
+                    value={effectStrength}
+                    onChange={e => setEffectStrength(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{effectStrength.toFixed(2)}</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="effect-radius-slider">Radius</label>
+                  <input
+                    id="effect-radius-slider"
+                    type="range"
+                    min={0.1} max={1} step={0.05}
+                    value={effectRadius}
+                    onChange={e => setEffectRadius(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{effectRadius.toFixed(2)}</span>
                 </div>
               </>
             )}

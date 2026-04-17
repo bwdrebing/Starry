@@ -169,84 +169,120 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
 // Bounds are derived from all shape vertices so edge midpoints always fall
 // within the normalised [0, 1] range.
 function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed,
-                      linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1) {
-  if (parquetDirection === 'none') return () => theta
+                      linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1,
+                      parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
+  const needsBounds = parquetDirection !== 'none' || parquetEffect !== 'none'
 
-  const lerp = w => thetaMin + Math.max(0, Math.min(1, w)) * (thetaMax - thetaMin)
-
-  // Collect spatial bounds from all vertices (covers the full canvas extent).
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, maxR = 0
-  for (const shape of shapes) {
-    const raw = shape[0]
-    if (!raw) continue
-    for (const [x, y] of raw) {
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-      const r = Math.sqrt(x * x + y * y)
-      if (r > maxR) maxR = r
+  if (needsBounds) {
+    for (const shape of shapes) {
+      const raw = shape[0]
+      if (!raw) continue
+      for (const [x, y] of raw) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        const r = Math.sqrt(x * x + y * y)
+        if (r > maxR) maxR = r
+      }
     }
+    maxR = maxR || 1e-8
   }
   const rangeX = maxX - minX || 1e-8
   const rangeY = maxY - minY || 1e-8
-  maxR = maxR || 1e-8
 
-  if (parquetDirection === 'ltr') {
-    // Project vertices onto the gradient direction to find the extent, then normalise.
-    const ca = Math.cos(linearAngle), sa = Math.sin(linearAngle)
-    let minP = Infinity, maxP = -Infinity
-    for (const shape of shapes) {
-      const raw = shape[0]; if (!raw) continue
-      for (const [vx, vy] of raw) {
-        const p = vx * ca + vy * sa
-        if (p < minP) minP = p
-        if (p > maxP) maxP = p
+  // Build base theta function from parquet direction.
+  let baseFn
+  if (parquetDirection === 'none') {
+    baseFn = () => theta
+  } else {
+    const lerp = w => thetaMin + Math.max(0, Math.min(1, w)) * (thetaMax - thetaMin)
+
+    if (parquetDirection === 'ltr') {
+      const ca = Math.cos(linearAngle), sa = Math.sin(linearAngle)
+      let minP = Infinity, maxP = -Infinity
+      for (const shape of shapes) {
+        const raw = shape[0]; if (!raw) continue
+        for (const [vx, vy] of raw) {
+          const p = vx * ca + vy * sa
+          if (p < minP) minP = p
+          if (p > maxP) maxP = p
+        }
       }
+      const rangeP = maxP - minP || 1e-8
+      baseFn = (x, y) => lerp((x * ca + y * sa - minP) / rangeP)
+    } else if (parquetDirection === 'btt') {
+      baseFn = (_x, y) => lerp((maxY - y) / rangeY)
+    } else if (parquetDirection === 'centered') {
+      const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
+      const safeRatio = ellipseRatio || 1
+      baseFn = (x, y) => {
+        const dx = x - centerX, dy = y - centerY
+        // Rotate to ellipse frame, then apply aspect ratio along major axis.
+        const lx = (dx * cosA + dy * sinA) / safeRatio
+        const ly = -dx * sinA + dy * cosA
+        return lerp(Math.sqrt(lx * lx + ly * ly) / maxR)
+      }
+    } else if (parquetDirection === 'fn') {
+      const t = time * speed
+      if (parquetFunction === 'wave-ltr') {
+        baseFn = (x, _y) => lerp((Math.sin(((x - minX) / rangeX) * Math.PI * 5 - t * 1.5) + 1) / 2)
+      } else if (parquetFunction === 'wave-btt') {
+        baseFn = (_x, y) => lerp((Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - t * 1.5) + 1) / 2)
+      } else if (parquetFunction === 'ripple') {
+        baseFn = (x, y) => lerp((Math.sin((Math.sqrt(x * x + y * y) / maxR) * Math.PI * 6 - t * 2) + 1) / 2)
+      } else if (parquetFunction === 'pulse') {
+        const w = (Math.sin(t * 2) + 1) / 2
+        baseFn = () => lerp(w)
+      } else {
+        baseFn = () => theta
+      }
+    } else {
+      baseFn = () => theta
     }
-    const rangeP = maxP - minP || 1e-8
-    return (x, y) => lerp((x * ca + y * sa - minP) / rangeP)
   }
-  if (parquetDirection === 'btt') {
-    return (_x, y) => lerp((maxY - y) / rangeY)
-  }
-  if (parquetDirection === 'centered') {
-    const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
-    const safeRatio = ellipseRatio || 1
+
+  if (parquetEffect === 'none' || effectStrength <= 0) return baseFn
+
+  // Apply a spatial warp effect on top of the base theta function.
+  // The effect range uses the parquet span, or a 30° default for flat mode.
+  const effectRange = Math.abs(thetaMax - thetaMin) || Math.PI / 6
+  const sigma2 = 2 * (effectRadius * maxR) ** 2 || 1e-8
+  // Clamp final theta to the valid slider range (10°–80°).
+  const clamp = v => Math.max(Math.PI / 18, Math.min(4 * Math.PI / 9, v))
+
+  if (parquetEffect === 'bulge') {
     return (x, y) => {
-      const dx = x - centerX, dy = y - centerY
-      // Rotate to ellipse frame, then apply aspect ratio along major axis.
-      const lx = (dx * cosA + dy * sinA) / safeRatio
-      const ly = -dx * sinA + dy * cosA
-      return lerp(Math.sqrt(lx * lx + ly * ly) / maxR)
+      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      return clamp(baseFn(x, y) + effectStrength * effectRange * bump)
     }
   }
-  if (parquetDirection === 'fn') {
-    const t = time * speed
-    if (parquetFunction === 'wave-ltr') {
-      return (x, _y) => lerp((Math.sin(((x - minX) / rangeX) * Math.PI * 5 - t * 1.5) + 1) / 2)
-    }
-    if (parquetFunction === 'wave-btt') {
-      return (_x, y) => lerp((Math.sin(((maxY - y) / rangeY) * Math.PI * 5 - t * 1.5) + 1) / 2)
-    }
-    if (parquetFunction === 'ripple') {
-      return (x, y) => lerp((Math.sin((Math.sqrt(x * x + y * y) / maxR) * Math.PI * 6 - t * 2) + 1) / 2)
-    }
-    if (parquetFunction === 'pulse') {
-      const w = (Math.sin(t * 2) + 1) / 2
-      return () => lerp(w)
+  if (parquetEffect === 'pinch') {
+    return (x, y) => {
+      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      return clamp(baseFn(x, y) - effectStrength * effectRange * bump)
     }
   }
-  return () => theta
+  if (parquetEffect === 'twist') {
+    // Angular variation around origin — angle goes ±π, normalised to ±1.
+    return (x, y) => {
+      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      const angle = Math.atan2(y, x) / Math.PI
+      return clamp(baseFn(x, y) + effectStrength * effectRange * angle * bump)
+    }
+  }
+
+  return baseFn
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
   const allUnder = [], allOver = []
 
   // Build a position→theta mapping. Edge midpoints are used as the sample point
   // so that both tiles sharing an edge compute the same theta, giving seamless
   // continuity across tile boundaries.
-  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio, parquetEffect, effectStrength, effectRadius)
 
   for (let si = 0; si < shapes.length; si++) {
     const shape = shapes[si]
@@ -330,8 +366,8 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio, parquetEffect, effectStrength, effectRadius)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
