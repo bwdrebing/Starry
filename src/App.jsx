@@ -293,7 +293,7 @@ export default function App() {
               <div className="parquet-toggle">
                 <button
                   className={parquetDirection === 'none' ? 'active' : ''}
-                  onClick={() => setParquetDirection('none')}
+                  onClick={() => { setParquetDirection('none'); setParquetEffect('none') }}
                   title="Off"
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
@@ -302,7 +302,7 @@ export default function App() {
                 </button>
                 <button
                   className={parquetDirection === 'ltr' ? 'active' : ''}
-                  onClick={() => { setParquetDirection('ltr'); setLinearAngle(0) }}
+                  onClick={() => { setParquetDirection('ltr'); setLinearAngle(0); setParquetEffect('none') }}
                   title="Linear gradient (drag direction handle on canvas)"
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -326,7 +326,7 @@ export default function App() {
                 </button>
                 <button
                   className={parquetDirection === 'fn' ? 'active' : ''}
-                  onClick={() => setParquetDirection('fn')}
+                  onClick={() => { setParquetDirection('fn'); setParquetEffect('none') }}
                   title="Animated function"
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -423,6 +423,45 @@ export default function App() {
                   />
                   <span className="slider-value">{ellipseRatio.toFixed(2)}×</span>
                 </div>
+                <div className="control-group">
+                  <label htmlFor="effect-select">Effect</label>
+                  <select
+                    id="effect-select"
+                    value={parquetEffect}
+                    onChange={e => setParquetEffect(e.target.value)}
+                  >
+                    <option value="none">None</option>
+                    <option value="bulge">Bulge</option>
+                    <option value="pinch">Pinch</option>
+                    <option value="twist">Twist</option>
+                  </select>
+                </div>
+                {parquetEffect !== 'none' && (
+                  <>
+                    <div className="control-group">
+                      <label htmlFor="effect-strength-slider">Strength</label>
+                      <input
+                        id="effect-strength-slider"
+                        type="range"
+                        min={0} max={1} step={0.05}
+                        value={effectStrength}
+                        onChange={e => setEffectStrength(Number(e.target.value))}
+                      />
+                      <span className="slider-value">{effectStrength.toFixed(2)}</span>
+                    </div>
+                    <div className="control-group">
+                      <label htmlFor="effect-radius-slider">Radius</label>
+                      <input
+                        id="effect-radius-slider"
+                        type="range"
+                        min={0.1} max={1} step={0.05}
+                        value={effectRadius}
+                        onChange={e => setEffectRadius(Number(e.target.value))}
+                      />
+                      <span className="slider-value">{effectRadius.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -479,47 +518,6 @@ export default function App() {
               </>
             )}
 
-            <div className="control-group">
-              <label htmlFor="effect-select">Effect</label>
-              <select
-                id="effect-select"
-                value={parquetEffect}
-                onChange={e => setParquetEffect(e.target.value)}
-                className="effect-select"
-              >
-                <option value="none">None</option>
-                <option value="bulge">Bulge</option>
-                <option value="pinch">Pinch</option>
-                <option value="twist">Twist</option>
-              </select>
-            </div>
-
-            {parquetEffect !== 'none' && (
-              <>
-                <div className="control-group">
-                  <label htmlFor="effect-strength-slider">Strength</label>
-                  <input
-                    id="effect-strength-slider"
-                    type="range"
-                    min={0} max={1} step={0.05}
-                    value={effectStrength}
-                    onChange={e => setEffectStrength(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{effectStrength.toFixed(2)}</span>
-                </div>
-                <div className="control-group">
-                  <label htmlFor="effect-radius-slider">Radius</label>
-                  <input
-                    id="effect-radius-slider"
-                    type="range"
-                    min={0.1} max={1} step={0.05}
-                    value={effectRadius}
-                    onChange={e => setEffectRadius(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{effectRadius.toFixed(2)}</span>
-                </div>
-              </>
-            )}
               </>
             )}
 

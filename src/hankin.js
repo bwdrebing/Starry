@@ -243,33 +243,37 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 // Returns a coordinate-space warp function (x,y)→[wx,wy] for geometric distortion,
 // or null when no warp is active. Segments are sampled at multiple points along
 // their length so the warp produces actual curved lines rather than relocated straights.
-function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR) {
+// cx/cy is the warp centre — matched to the radial parquet centre.
+function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0) {
   if (parquetEffect === 'none' || effectStrength <= 0 || maxR <= 0) return null
   const sigma2 = 2 * (effectRadius * maxR) ** 2 || 1e-8
 
   if (parquetEffect === 'bulge') {
-    // Push points radially away from origin — nearby points expand outward.
+    // Push points radially away from the warp centre.
     return (x, y) => {
-      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      const dx = x - cx, dy = y - cy
+      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
       const s = 1 + effectStrength * bump
-      return [x * s, y * s]
+      return [cx + dx * s, cy + dy * s]
     }
   }
   if (parquetEffect === 'pinch') {
-    // Pull points radially toward origin — nearby points contract inward.
+    // Pull points radially toward the warp centre.
     return (x, y) => {
-      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      const dx = x - cx, dy = y - cy
+      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
       const s = Math.max(0.05, 1 - effectStrength * bump)
-      return [x * s, y * s]
+      return [cx + dx * s, cy + dy * s]
     }
   }
   if (parquetEffect === 'twist') {
-    // Rotate points around origin by an angle that falls off with distance.
+    // Rotate points around the warp centre by an angle that falls off with distance.
     return (x, y) => {
-      const bump = Math.exp(-(x * x + y * y) / sigma2)
+      const dx = x - cx, dy = y - cy
+      const bump = Math.exp(-(dx * dx + dy * dy) / sigma2)
       const a = effectStrength * Math.PI * bump
       const cos = Math.cos(a), sin = Math.sin(a)
-      return [x * cos - y * sin, x * sin + y * cos]
+      return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos]
     }
   }
   return null
@@ -368,17 +372,20 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
   const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
 
-  // Build a geometric coordinate warp if an effect is active.
+  // Build a geometric coordinate warp — only available for the radial (centered) parquet
+  // mode, and centred at the same point as the radial gradient.
   let maxR = 0
-  if (parquetEffect !== 'none' && effectStrength > 0) {
+  if (parquetDirection === 'centered' && parquetEffect !== 'none' && effectStrength > 0) {
     for (const shape of shapes) {
       const raw = shape[0]; if (!raw) continue
       for (const [x, y] of raw) {
-        const r = Math.sqrt(x * x + y * y); if (r > maxR) maxR = r
+        const r = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2); if (r > maxR) maxR = r
       }
     }
   }
-  const warpFn = buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR)
+  const warpFn = parquetDirection === 'centered'
+    ? buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, centerX, centerY)
+    : null
 
   // Draw one segment, subdivided so the geometric warp produces curved lines.
   const drawSeg = ([p1, p2]) => {
