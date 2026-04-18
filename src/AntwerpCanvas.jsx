@@ -643,19 +643,20 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
         // Build the same geometric warp used by the canvas renderer so the SVG matches.
         let svgMaxR = 0
-        const svgEffect = parquetEffectRef.current
-        if (parquetDirectionRef.current === 'centered' && svgEffect !== 'none' && effectStrengthRef.current > 0) {
-          for (const shape of shapes) {
-            const raw = shape[0]; if (!raw) continue
-            for (const [vx, vy] of raw) {
-              const r = Math.sqrt(vx * vx + vy * vy); if (r > svgMaxR) svgMaxR = r
-            }
+        for (const shape of shapes) {
+          const raw = shape[0]; if (!raw) continue
+          for (const [vx, vy] of raw) {
+            const r = Math.sqrt(vx * vx + vy * vy); if (r > svgMaxR) svgMaxR = r
           }
         }
-        const svgWarpFn = parquetDirectionRef.current === 'centered'
-          ? buildWarpFn(svgEffect, effectStrengthRef.current, effectRadiusRef.current, svgMaxR,
-              centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current)
-          : null
+        const svgWarpFn = buildWarpFn(
+          parquetDirectionRef.current === 'centered' ? parquetEffectRef.current : 'none',
+          effectStrengthRef.current, effectRadiusRef.current, svgMaxR,
+          centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current
+        )
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[SVG export] warp:', { effect: parquetEffectRef.current, direction: parquetDirectionRef.current, strength: effectStrengthRef.current, maxR: svgMaxR, warpFnNull: svgWarpFn === null })
+        }
 
         const toPath = ([p1, p2]) => {
           if (!svgWarpFn) return segPath([p1, p2])
