@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
-import { drawHankin, getHankinSegments } from './hankin'
+import { drawHankin, getHankinSegments, buildWarpFn } from './hankin'
 import { generateMultigrid } from './penrose'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
          subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
@@ -640,8 +640,39 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           linearAngleRef.current, centerXRef.current, centerYRef.current,
           ellipseAngleRef.current, ellipseRatioRef.current
         )
-        const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
-        const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
+
+        // Build the same geometric warp used by the canvas renderer so the SVG matches.
+        let svgMaxR = 0
+        const svgEffect = parquetEffectRef.current
+        if (parquetDirectionRef.current === 'centered' && svgEffect !== 'none' && effectStrengthRef.current > 0) {
+          for (const shape of shapes) {
+            const raw = shape[0]; if (!raw) continue
+            for (const [vx, vy] of raw) {
+              const r = Math.sqrt(vx * vx + vy * vy); if (r > svgMaxR) svgMaxR = r
+            }
+          }
+        }
+        const svgWarpFn = parquetDirectionRef.current === 'centered'
+          ? buildWarpFn(svgEffect, effectStrengthRef.current, effectRadiusRef.current, svgMaxR,
+              centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current)
+          : null
+
+        const toPath = ([p1, p2]) => {
+          if (!svgWarpFn) return segPath([p1, p2])
+          const N = 10
+          let d = ''
+          for (let i = 0; i <= N; i++) {
+            const t = i / N
+            const x = p1[0] + t * (p2[0] - p1[0])
+            const y = p1[1] + t * (p2[1] - p1[1])
+            const [wx, wy] = svgWarpFn(x, y)
+            d += i === 0 ? `M ${fmt(wx)},${fmt(wy)}` : ` L ${fmt(wx)},${fmt(wy)}`
+          }
+          return d
+        }
+
+        const underPaths = underSegs.map(s => `    <path d="${toPath(s)}"/>`).join('\n')
+        const overPaths  = overSegs.map(s  => `    <path d="${toPath(s)}"/>`).join('\n')
         motifContent = `
   <g id="under">
 ${underPaths}

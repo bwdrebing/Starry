@@ -245,7 +245,7 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 // their length so the warp produces actual curved lines rather than relocated straights.
 // cx/cy, ellipseAngle and ellipseRatio are matched to the radial parquet parameters so
 // the warp falloff has exactly the same elliptical footprint as the angle gradient.
-function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0, ellipseAngle = 0, ellipseRatio = 1) {
+export function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0, ellipseAngle = 0, ellipseRatio = 1) {
   if (parquetEffect === 'none' || effectStrength <= 0 || maxR <= 0) return null
   const sigma2 = 2 * (effectRadius * maxR) ** 2 || 1e-8
   const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
