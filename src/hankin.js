@@ -169,7 +169,7 @@ function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
 // Bounds are derived from all shape vertices so edge midpoints always fall
 // within the normalised [0, 1] range.
 function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed,
-                      linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1) {
+                      linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
   if (parquetDirection === 'none') return () => theta
 
   const lerp = w => thetaMin + Math.max(0, Math.min(1, w)) * (thetaMax - thetaMin)
@@ -212,13 +212,13 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   }
   if (parquetDirection === 'centered') {
     const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
-    const safeRatio = ellipseRatio || 1
+    const maj = (ellipseMajorScale || 1) * maxR
+    const min = (ellipseMinorScale || 1) * maxR
     return (x, y) => {
       const dx = x - centerX, dy = y - centerY
-      // Rotate to ellipse frame, then apply aspect ratio along major axis.
-      const lx = (dx * cosA + dy * sinA) / safeRatio
-      const ly = -dx * sinA + dy * cosA
-      return lerp(Math.sqrt(lx * lx + ly * ly) / maxR)
+      const lx = (dx * cosA + dy * sinA) / maj
+      const ly = (-dx * sinA + dy * cosA) / min
+      return lerp(Math.sqrt(lx * lx + ly * ly))
     }
   }
   if (parquetDirection === 'fn') {
@@ -243,19 +243,20 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 // Returns a coordinate-space warp function (x,y)→[wx,wy] for geometric distortion,
 // or null when no warp is active. Segments are sampled at multiple points along
 // their length so the warp produces actual curved lines rather than relocated straights.
-// cx/cy, ellipseAngle and ellipseRatio are matched to the radial parquet parameters so
-// the warp falloff has exactly the same elliptical footprint as the angle gradient.
-export function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0, ellipseAngle = 0, ellipseRatio = 1) {
+// cx/cy, ellipseAngle, ellipseMajorScale and ellipseMinorScale are matched to the radial
+// parquet parameters so the warp falloff has exactly the same elliptical footprint.
+export function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, cx = 0, cy = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
   if (parquetEffect === 'none' || effectStrength <= 0 || maxR <= 0) return null
-  const sigma2 = 2 * (effectRadius * maxR) ** 2 || 1e-8
+  const sigma2 = 2 * effectRadius ** 2 || 1e-8
   const cosA = Math.cos(ellipseAngle), sinA = Math.sin(ellipseAngle)
-  const safeRatio = ellipseRatio || 1
+  const maj = (ellipseMajorScale || 1) * maxR
+  const min = (ellipseMinorScale || 1) * maxR
 
-  // Ellipse-frame squared distance — mirrors buildThetaAt's 'centered' transform so the
-  // Gaussian falloff has the same shape and orientation as the angle gradient.
+  // Ellipse-frame squared distance (normalised by maxR) — mirrors buildThetaAt's
+  // 'centered' transform so the Gaussian falloff matches the angle gradient shape.
   const ellipseDist2 = (dx, dy) => {
-    const lx = (dx * cosA + dy * sinA) / safeRatio
-    const ly = -dx * sinA + dy * cosA
+    const lx = (dx * cosA + dy * sinA) / maj
+    const ly = (-dx * sinA + dy * cosA) / min
     return lx * lx + ly * ly
   }
 
@@ -290,13 +291,13 @@ export function buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, c
   return null
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
   const allUnder = [], allOver = []
 
   // Build a position→theta mapping. Edge midpoints are used as the sample point
   // so that both tiles sharing an edge compute the same theta, giving seamless
   // continuity across tile boundaries.
-  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
   for (let si = 0; si < shapes.length; si++) {
     const shape = shapes[si]
@@ -380,8 +381,8 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
   // Build a geometric coordinate warp — only available for the radial (centered) parquet
   // mode, and centred at the same point as the radial gradient.
@@ -396,7 +397,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     }
   }
   const warpFn = parquetDirection === 'centered'
-    ? buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, centerX, centerY, ellipseAngle, ellipseRatio)
+    ? buildWarpFn(parquetEffect, effectStrength, effectRadius, maxR, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
     : null
 
   // Draw one segment, subdivided so the geometric warp produces curved lines.
@@ -421,7 +422,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   for (const seg of overSegs) drawSeg(seg)
 
   if (debug) {
-    const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio)
+    const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
     const r = 3 / (ctx.getTransform?.().a ?? 1)
     ctx.save()
     ctx.lineWidth = 1 / (ctx.getTransform?.().a ?? 1)

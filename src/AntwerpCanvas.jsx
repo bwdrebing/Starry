@@ -52,7 +52,7 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseRatio = 1, onParquetParamChange = null, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4 }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -77,7 +77,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const centerXRef = useRef(centerX)
   const centerYRef = useRef(centerY)
   const ellipseAngleRef = useRef(ellipseAngle)
-  const ellipseRatioRef = useRef(ellipseRatio)
+  const ellipseMajorScaleRef = useRef(ellipseMajorScale)
+  const ellipseMinorScaleRef = useRef(ellipseMinorScale)
   const onParquetParamChangeRef = useRef(onParquetParamChange)
   const parquetEffectRef = useRef(parquetEffect)
   const effectStrengthRef = useRef(effectStrength)
@@ -210,7 +211,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current, parquetEffectRef.current, effectStrengthRef.current, effectRadiusRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current, parquetEffectRef.current, effectStrengthRef.current, effectRadiusRef.current)
       }
     }
 
@@ -218,7 +219,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     const pd = parquetDirectionRef.current
     if (pd === 'ltr' || pd === 'centered') {
       const { maxR } = boundsRef.current
-      const displayR = maxR * 0.58
+      const baseR = maxR * 0.45
       const hr = 8 / scale
       const lw = 1.5 / scale
 
@@ -227,7 +228,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
       if (pd === 'ltr') {
         const a = linearAngleRef.current
-        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
+        const hx = Math.cos(a) * baseR, hy = Math.sin(a) * baseR
 
         ctx.strokeStyle = 'rgba(255,210,60,0.75)'
         ctx.setLineDash([5 / scale, 4 / scale])
@@ -254,18 +255,20 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (pd === 'centered') {
         const cx2 = centerXRef.current, cy2 = centerYRef.current
         const ea = ellipseAngleRef.current
-        const ratio = ellipseRatioRef.current || 1
-        const er = displayR
-        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
-        const minorX = -Math.sin(ea), minorY = Math.cos(ea)
-        const rx2 = cx2 + minorX * er / ratio, ry2 = cy2 + minorY * er / ratio
+        const majorS = ellipseMajorScaleRef.current || 1
+        const minorS = ellipseMinorScaleRef.current || 1
+        const baseR = maxR * 0.45
+        const majorLen = majorS * baseR
+        const minorLen = minorS * baseR
+        const ax = cx2 + Math.cos(ea) * majorLen, ay = cy2 + Math.sin(ea) * majorLen
+        const rx2 = cx2 - Math.sin(ea) * minorLen, ry2 = cy2 + Math.cos(ea) * minorLen
 
         // Ellipse outline
         ctx.strokeStyle = 'rgba(255,210,60,0.45)'
         ctx.setLineDash([5 / scale, 4 / scale])
         ctx.save()
         ctx.translate(cx2, cy2); ctx.rotate(ea)
-        ctx.beginPath(); ctx.ellipse(0, 0, er, er / ratio, 0, 0, Math.PI * 2); ctx.stroke()
+        ctx.beginPath(); ctx.ellipse(0, 0, majorLen, minorLen, 0, 0, Math.PI * 2); ctx.stroke()
         ctx.restore()
         ctx.setLineDash([])
 
@@ -280,11 +283,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         ctx.fillStyle = 'rgba(255,210,60,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.6)'
         ctx.beginPath(); ctx.arc(cx2, cy2, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
 
-        // Rotation handle (blue) — drags to change ellipse angle
+        // Major-axis handle (blue) — drag sets angle + major scale
         ctx.fillStyle = 'rgba(80,180,255,0.9)'
         ctx.beginPath(); ctx.arc(ax, ay, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
 
-        // Ratio handle (green) — drags to change ellipse ratio (minor axis)
+        // Minor-axis handle (green) — drag sets minor scale
         ctx.fillStyle = 'rgba(80,235,110,0.9)'
         ctx.beginPath(); ctx.arc(rx2, ry2, hr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
       }
@@ -316,14 +319,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     centerXRef.current = centerX
     centerYRef.current = centerY
     ellipseAngleRef.current = ellipseAngle
-    ellipseRatioRef.current = ellipseRatio
+    ellipseMajorScaleRef.current = ellipseMajorScale
+    ellipseMinorScaleRef.current = ellipseMinorScale
     onParquetParamChangeRef.current = onParquetParamChange
     parquetEffectRef.current = parquetEffect
     effectStrengthRef.current = effectStrength
     effectRadiusRef.current = effectRadius
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseRatio, onParquetParamChange, parquetEffect, effectStrength, effectRadius, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, parquetEffect, effectStrength, effectRadius, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -397,21 +401,21 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       const { maxR } = boundsRef.current
       const { scale } = transformRef.current
       const HR = 18 / scale
-      const displayR = maxR * 0.58
+      const baseR = maxR * 0.45
       if (pd === 'ltr') {
         const a = linearAngleRef.current
-        const hx = Math.cos(a) * displayR, hy = Math.sin(a) * displayR
+        const hx = Math.cos(a) * baseR, hy = Math.sin(a) * baseR
         if (Math.hypot(wx - hx, wy - hy) < HR || Math.hypot(wx + hx, wy + hy) < HR) return 'linear'
       }
       if (pd === 'centered') {
         const cx2 = centerXRef.current, cy2 = centerYRef.current
         const ea = ellipseAngleRef.current
-        const ratio = ellipseRatioRef.current || 1
-        const er = displayR
-        const ax = cx2 + Math.cos(ea) * er, ay = cy2 + Math.sin(ea) * er
-        const rx2 = cx2 - Math.sin(ea) * er / ratio, ry2 = cy2 + Math.cos(ea) * er / ratio
-        if (Math.hypot(wx - ax, wy - ay) < HR) return 'ellipse-angle'
-        if (Math.hypot(wx - rx2, wy - ry2) < HR) return 'ellipse-ratio'
+        const majorLen = (ellipseMajorScaleRef.current || 1) * baseR
+        const minorLen = (ellipseMinorScaleRef.current || 1) * baseR
+        const ax = cx2 + Math.cos(ea) * majorLen, ay = cy2 + Math.sin(ea) * majorLen
+        const rx2 = cx2 - Math.sin(ea) * minorLen, ry2 = cy2 + Math.cos(ea) * minorLen
+        if (Math.hypot(wx - ax, wy - ay) < HR) return 'ellipse-major'
+        if (Math.hypot(wx - rx2, wy - ry2) < HR) return 'ellipse-minor'
         if (Math.hypot(wx - cx2, wy - cy2) < HR) return 'center'
       }
       return null
@@ -419,7 +423,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
 
     function applyHandleUpdate(handleType, wx, wy) {
       const { maxR } = boundsRef.current
-      const displayR = maxR * 0.58
+      const baseR = maxR * 0.45
       if (handleType === 'linear') {
         const angle = Math.atan2(wy, wx)
         linearAngleRef.current = angle
@@ -429,19 +433,24 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         centerXRef.current = wx; centerYRef.current = wy
         draw()
         onParquetParamChangeRef.current?.({ centerX: wx, centerY: wy })
-      } else if (handleType === 'ellipse-angle') {
+      } else if (handleType === 'ellipse-major') {
+        // Drag sets both rotation angle and major-axis scale.
         const angle = Math.atan2(wy - centerYRef.current, wx - centerXRef.current)
+        const dist = Math.hypot(wx - centerXRef.current, wy - centerYRef.current)
+        const majorScale = Math.max(0.1, Math.min(5, dist / baseR))
         ellipseAngleRef.current = angle
+        ellipseMajorScaleRef.current = majorScale
         draw()
-        onParquetParamChangeRef.current?.({ ellipseAngle: angle })
-      } else if (handleType === 'ellipse-ratio') {
+        onParquetParamChangeRef.current?.({ ellipseAngle: angle, ellipseMajorScale: majorScale })
+      } else if (handleType === 'ellipse-minor') {
+        // Project onto the current minor-axis direction and use the length as the scale.
         const ea = ellipseAngleRef.current
         const minorX = -Math.sin(ea), minorY = Math.cos(ea)
         const proj = Math.abs((wx - centerXRef.current) * minorX + (wy - centerYRef.current) * minorY)
-        const newRatio = Math.max(0.2, Math.min(5, displayR / Math.max(displayR * 0.1, proj)))
-        ellipseRatioRef.current = newRatio
+        const minorScale = Math.max(0.1, Math.min(5, proj / baseR))
+        ellipseMinorScaleRef.current = minorScale
         draw()
-        onParquetParamChangeRef.current?.({ ellipseRatio: newRatio })
+        onParquetParamChangeRef.current?.({ ellipseMinorScale: minorScale })
       }
     }
 
@@ -638,7 +647,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current,
           parquetFunctionRef.current, 0, 1,
           linearAngleRef.current, centerXRef.current, centerYRef.current,
-          ellipseAngleRef.current, ellipseRatioRef.current
+          ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
         )
 
         // Build the same geometric warp used by the canvas renderer so the SVG matches.
@@ -652,7 +661,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         const svgWarpFn = buildWarpFn(
           parquetDirectionRef.current === 'centered' ? parquetEffectRef.current : 'none',
           effectStrengthRef.current, effectRadiusRef.current, svgMaxR,
-          centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseRatioRef.current
+          centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
         )
         if (process.env.NODE_ENV === 'development') {
           console.log('[SVG export] warp:', { effect: parquetEffectRef.current, direction: parquetDirectionRef.current, strength: effectStrengthRef.current, maxR: svgMaxR, warpFnNull: svgWarpFn === null })
