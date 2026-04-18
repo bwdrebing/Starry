@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
-import { drawHankin, getHankinSegments } from './hankin'
+import { drawHankin, getHankinSegments, buildWarpFn } from './hankin'
 import { generateMultigrid } from './penrose'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
          subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
@@ -52,7 +52,7 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null, parquetEffect = 'none', effectStrength = 0.5, effectRadius = 0.4 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -80,6 +80,9 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const ellipseMajorScaleRef = useRef(ellipseMajorScale)
   const ellipseMinorScaleRef = useRef(ellipseMinorScale)
   const onParquetParamChangeRef = useRef(onParquetParamChange)
+  const parquetEffectRef = useRef(parquetEffect)
+  const effectStrengthRef = useRef(effectStrength)
+  const effectRadiusRef = useRef(effectRadius)
   const boundsRef = useRef({ minX: -200, maxX: 200, minY: -200, maxY: 200, maxR: 200 })
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
@@ -208,7 +211,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current, parquetEffectRef.current, effectStrengthRef.current, effectRadiusRef.current)
       }
     }
 
@@ -319,9 +322,12 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ellipseMajorScaleRef.current = ellipseMajorScale
     ellipseMinorScaleRef.current = ellipseMinorScale
     onParquetParamChangeRef.current = onParquetParamChange
+    parquetEffectRef.current = parquetEffect
+    effectStrengthRef.current = effectStrength
+    effectRadiusRef.current = effectRadius
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, parquetEffect, effectStrength, effectRadius, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -643,8 +649,40 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           linearAngleRef.current, centerXRef.current, centerYRef.current,
           ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
         )
-        const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
-        const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
+
+        // Build the same geometric warp used by the canvas renderer so the SVG matches.
+        let svgMaxR = 0
+        for (const shape of shapes) {
+          const raw = shape[0]; if (!raw) continue
+          for (const [vx, vy] of raw) {
+            const r = Math.sqrt(vx * vx + vy * vy); if (r > svgMaxR) svgMaxR = r
+          }
+        }
+        const svgWarpFn = buildWarpFn(
+          parquetDirectionRef.current === 'centered' ? parquetEffectRef.current : 'none',
+          effectStrengthRef.current, effectRadiusRef.current, svgMaxR,
+          centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
+        )
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[SVG export] warp:', { effect: parquetEffectRef.current, direction: parquetDirectionRef.current, strength: effectStrengthRef.current, maxR: svgMaxR, warpFnNull: svgWarpFn === null })
+        }
+
+        const toPath = ([p1, p2]) => {
+          if (!svgWarpFn) return segPath([p1, p2])
+          const N = 10
+          let d = ''
+          for (let i = 0; i <= N; i++) {
+            const t = i / N
+            const x = p1[0] + t * (p2[0] - p1[0])
+            const y = p1[1] + t * (p2[1] - p1[1])
+            const [wx, wy] = svgWarpFn(x, y)
+            d += i === 0 ? `M ${fmt(wx)},${fmt(wy)}` : ` L ${fmt(wx)},${fmt(wy)}`
+          }
+          return d
+        }
+
+        const underPaths = underSegs.map(s => `    <path d="${toPath(s)}"/>`).join('\n')
+        const overPaths  = overSegs.map(s  => `    <path d="${toPath(s)}"/>`).join('\n')
         motifContent = `
   <g id="under">
 ${underPaths}
