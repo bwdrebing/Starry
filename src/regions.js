@@ -119,7 +119,9 @@ function polygonKey(poly) {
   return best
 }
 
-export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
+// Shared core: returns every region instance tagged with its canonical key.
+// computeRegions and getAllRegionInstances both delegate here.
+function buildRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
   const { underSegs, overSegs } = getHankinSegments(
     shapes, theta, delta,
     thick, false, 0, bandWidth,
@@ -134,7 +136,6 @@ export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDi
   const { verts, adj } = buildGraph(allSegs)
   const faces = findFaces(verts, adj)
 
-  // Interior faces have positive signed area in canvas coords (y-down)
   const interior = faces.filter(f => signedArea(f) > 0)
   if (interior.length === 0) return []
 
@@ -142,20 +143,15 @@ export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDi
   const sorted = [...areas].sort((a, b) => a - b)
   const median = sorted[Math.floor(sorted.length / 2)]
 
-  // Discard very large faces (outer/background) and tiny noise slivers
   const filtered = interior.filter((_, i) =>
     areas[i] < median * 50 && areas[i] > median * 0.02
   )
 
-  const byKey = new Map()
-  for (const face of filtered) {
-    const key = polygonKey(face)
-    if (key && !byKey.has(key)) byKey.set(key, face)
-  }
+  const instances = filtered.map(face => ({ poly: face, key: polygonKey(face) }))
 
   // In thick mode the outer and inner band cycles are disconnected components,
   // so the face-finder cannot see the corridor between them. Build each corridor
-  // quad directly from its four corner points and add it to the unique-region set.
+  // quad directly from its four corner points.
   if (thick) {
     const corridors = getThickCorridorPolygons(
       shapes, theta, delta, bandWidth,
@@ -165,14 +161,28 @@ export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDi
     )
     for (let poly of corridors) {
       const a = signedArea(poly)
-      if (Math.abs(a) < 1e-6) continue       // degenerate
-      if (a < 0) poly = [...poly].reverse()   // ensure CW winding (positive area)
-      const key = polygonKey(poly)
-      if (key && !byKey.has(key)) byKey.set(key, poly)
+      if (Math.abs(a) < 1e-6) continue
+      if (a < 0) poly = [...poly].reverse()
+      instances.push({ poly, key: polygonKey(poly) })
     }
   }
 
+  return instances
+}
+
+// Returns one representative polygon per unique region type (for export).
+export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
+  const instances = buildRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+  const byKey = new Map()
+  for (const { poly, key } of instances) {
+    if (key && !byKey.has(key)) byKey.set(key, poly)
+  }
   return Array.from(byKey.values())
+}
+
+// Returns every region instance with its canonical key (for debug coloring).
+export function getAllRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
+  return buildRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 }
 
 // Returns a scale factor so the largest region fills (size - 2*padding) in its cell.
