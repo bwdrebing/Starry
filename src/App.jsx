@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingGallery from './TilingGallery'
+import ExportRegionsModal from './ExportRegionsModal'
 import { VERTEX_COLORS } from './truchet'
 import { SQUARE_VERTEX_COLORS } from './squareTruchet'
+import { computeRegions } from './regions'
 import './App.css'
 
 const TILINGS = [
@@ -81,6 +83,8 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  const [regionsOpen, setRegionsOpen] = useState(false)
+  const [computedRegions, setComputedRegions] = useState([])
   const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
 
@@ -92,6 +96,30 @@ export default function App() {
     if (selectedTileIdx < 0) return
     canvasRef.current?.updateTileMeta(selectedTileIdx, updates)
     setSelectedTileMeta(prev => ({ ...prev, ...updates }))
+  }
+
+  function handleExportRegions() {
+    const shapes = canvasRef.current?.getFilteredShapes()
+    if (!shapes || shapes.length === 0) return
+    const regions = computeRegions(
+      shapes,
+      thetaDeg * Math.PI / 180,
+      delta,
+      thick,
+      bandWidth,
+      parquetDirection,
+      thetaMinDeg * Math.PI / 180,
+      thetaMaxDeg * Math.PI / 180,
+      parquetFunction,
+      linearAngle,
+      parquetCenterX,
+      parquetCenterY,
+      ellipseAngle,
+      ellipseMajorScale,
+      ellipseMinorScale
+    )
+    setComputedRegions(regions)
+    setRegionsOpen(true)
   }
 
   useEffect(() => {
@@ -616,6 +644,14 @@ export default function App() {
               </button>
             </div>
 
+            {!isAnyTruchet && (
+              <div className="control-group">
+                <button className="export-btn" onClick={handleExportRegions}>
+                  Export Regions
+                </button>
+              </div>
+            )}
+
             <label className="debug-toggle">
               <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
               debug
@@ -631,6 +667,13 @@ export default function App() {
           selectedIndex={tilingIndex}
           onSelect={setTilingIndex}
           onClose={() => setGalleryOpen(false)}
+        />
+      )}
+
+      {regionsOpen && (
+        <ExportRegionsModal
+          regions={computedRegions}
+          onClose={() => setRegionsOpen(false)}
         />
       )}
     </div>

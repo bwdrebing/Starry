@@ -379,3 +379,42 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     ctx.restore()
   }
 }
+
+// For each edge-pair in each tile, returns the two quadrilateral corridors
+// (one per ray arm: A-ray = left ray of edge i, B-ray = right ray of edge i+1)
+// that represent the space between the outer and inner thick band lines.
+// These corridors are separate connected components from the rest of the graph,
+// so the planar face-finder cannot detect them; they must be computed directly.
+export function getThickCorridorPolygons(shapes, theta, delta, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+  const polys = []
+
+  for (const shape of shapes) {
+    const raw = shape[0]
+    if (!raw || raw.length < 3) continue
+    const vertices = ensureClockwise(raw)
+    const n = vertices.length
+    const [outer, inner] = makeEdgeRays(vertices, thetaAt, delta, true, bandWidth)
+
+    const spOf = edges => Array.from({ length: n }, (_, i) => {
+      const j = (i + 1) % n
+      const rayA = edges[i].left, rayB = edges[j].right
+      const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+      return (pt && pointInPolygon(pt, vertices)) ? pt
+        : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+    })
+
+    const spOuter = spOf(outer)
+    const spInner = spOf(inner)
+
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      // Corridor along the A-ray (left ray of edge i): four corners at the two origins and two star points
+      polys.push([outer[i].left.origin, spOuter[i], spInner[i], inner[i].left.origin])
+      // Corridor along the B-ray (right ray of edge j=i+1)
+      polys.push([outer[j].right.origin, spOuter[i], spInner[i], inner[j].right.origin])
+    }
+  }
+
+  return polys
+}

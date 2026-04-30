@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
+import { getAllRegionInstances } from './regions'
 import { generateMultigrid } from './penrose'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
          subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
@@ -84,6 +85,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
   const onTileClickRef      = useRef(onTileClick)
+  // Cache for the debug region overlay; invalidated by a version counter that bumps
+  // whenever shapes or any motif parameter changes.
+  const regionCacheRef  = useRef({ version: -1, instances: [], colorMap: new Map() })
+  const shapesVersionRef = useRef(0)
 
   // Filter allShapesRef by radius fraction and write result into shapesRef.
   const applyRadius = useCallback(() => {
@@ -112,6 +117,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       }
     }
     if (bMaxR > 0) boundsRef.current = { minX: bMinX, maxX: bMaxX, minY: bMinY, maxY: bMaxY, maxR: bMaxR }
+    shapesVersionRef.current++
   }, [])
 
   const draw = useCallback(() => {
@@ -202,6 +208,43 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
         ctx.closePath()
         ctx.stroke()
+      }
+
+      // Debug region overlay: fill each region instance with a per-type colour.
+      if (showMotifRef.current && debugRef.current) {
+        const ver = shapesVersionRef.current
+        const fp = `${ver}|${thetaRef.current}|${deltaRef.current}|${thickRef.current}|${bandWidthRef.current}|${parquetDirectionRef.current}|${thetaMinRef.current}|${thetaMaxRef.current}`
+        if (fp !== regionCacheRef.current.version) {
+          const instances = getAllRegionInstances(
+            shapesRef.current,
+            thetaRef.current, deltaRef.current, thickRef.current, bandWidthRef.current,
+            parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current,
+            parquetFunctionRef.current,
+            linearAngleRef.current, centerXRef.current, centerYRef.current,
+            ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
+          )
+          const colorMap = new Map()
+          let ci = 0
+          for (const { key } of instances) {
+            if (!colorMap.has(key)) {
+              const hue = (ci * 137.508) % 360  // golden-angle spacing for distinct hues
+              colorMap.set(key, `hsla(${hue.toFixed(1)},70%,60%,0.45)`)
+              ci++
+            }
+          }
+          regionCacheRef.current = { version: fp, instances, colorMap }
+        }
+        const { instances, colorMap } = regionCacheRef.current
+        ctx.save()
+        for (const { poly, key } of instances) {
+          ctx.fillStyle = colorMap.get(key) ?? 'rgba(200,200,200,0.3)'
+          ctx.beginPath()
+          ctx.moveTo(poly[0][0], poly[0][1])
+          for (let k = 1; k < poly.length; k++) ctx.lineTo(poly[k][0], poly[k][1])
+          ctx.closePath()
+          ctx.fill()
+        }
+        ctx.restore()
       }
 
       // Hankin straps
@@ -702,6 +745,9 @@ ${overPaths}
     },
     getShapes() {
       return allShapesRef.current
+    },
+    getFilteredShapes() {
+      return shapesRef.current
     },
   }))
 
