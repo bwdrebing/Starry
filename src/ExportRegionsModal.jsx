@@ -1,15 +1,16 @@
 import { useMemo } from 'react'
-import { regionToSVGString } from './regions'
+import { regionToSVGString, computeRegionScale } from './regions'
 
 export default function ExportRegionsModal({ regions, onClose }) {
-  const previews = useMemo(
-    () => regions.map(poly => regionToSVGString(poly, 100, 12, false)),
-    [regions]
-  )
+  const previews = useMemo(() => {
+    const scale = computeRegionScale(regions, 100, 12)
+    return regions.map(poly => regionToSVGString(poly, 100, 12, false, scale))
+  }, [regions])
 
   function downloadAll() {
+    const scale = computeRegionScale(regions, 512, 48)
     regions.forEach((poly, i) => {
-      const svg = regionToSVGString(poly, 512, 48, true)
+      const svg = regionToSVGString(poly, 512, 48, true, scale)
       const blob = new Blob([svg], { type: 'image/svg+xml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')

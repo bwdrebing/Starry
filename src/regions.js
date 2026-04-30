@@ -156,12 +156,25 @@ export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDi
   return Array.from(byKey.values())
 }
 
-export function regionToSVGString(poly, size = 200, padding = 20, forExport = false) {
+// Returns a scale factor so the largest region fills (size - 2*padding) in its cell.
+// Pass this to regionToSVGString to keep all regions at consistent relative sizes.
+export function computeRegionScale(regions, size, padding) {
+  let maxDim = 0
+  for (const poly of regions) {
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1])
+    maxDim = Math.max(maxDim, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+  }
+  return maxDim > 0 ? (size - 2 * padding) / maxDim : 1
+}
+
+// scale: if provided, all regions use the same scale (for relative-size display).
+//        If null, each region is independently fitted to the viewBox.
+export function regionToSVGString(poly, size = 200, padding = 20, forExport = false, scale = null) {
   const xs = poly.map(p => p[0]), ys = poly.map(p => p[1])
   const minX = Math.min(...xs), maxX = Math.max(...xs)
   const minY = Math.min(...ys), maxY = Math.max(...ys)
   const w = maxX - minX || 1, h = maxY - minY || 1
-  const sc = (size - 2 * padding) / Math.max(w, h)
+  const sc = scale ?? (size - 2 * padding) / Math.max(w, h)
   const ox = (size - (minX + maxX) * sc) / 2
   const oy = (size - (minY + maxY) * sc) / 2
 
