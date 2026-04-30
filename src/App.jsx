@@ -105,6 +105,7 @@ export default function App() {
       shapes,
       thetaDeg * Math.PI / 180,
       delta,
+      thick,
       bandWidth,
       parquetDirection,
       thetaMinDeg * Math.PI / 180,

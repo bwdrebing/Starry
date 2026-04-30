@@ -119,10 +119,10 @@ function polygonKey(poly) {
   return best
 }
 
-export function computeRegions(shapes, theta, delta, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
+export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale) {
   const { underSegs, overSegs } = getHankinSegments(
     shapes, theta, delta,
-    false, false, 0, bandWidth,
+    thick, false, 0, bandWidth,
     parquetDirection, thetaMin, thetaMax,
     parquetFunction, 0, 1,
     linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale
