@@ -1,4 +1,4 @@
-import { getHankinSegments, getThickCorridorPolygons } from './hankin'
+import { getHankinSegments } from './hankin'
 
 const SNAP = 0.1
 
@@ -14,6 +14,90 @@ function signedArea(poly) {
     area += ax * by - bx * ay
   }
   return area / 2
+}
+
+// Split segments at all interior crossings so the planar graph is topologically correct.
+// Uses a spatial hash grid to avoid O(n²) pair checks.
+function splitAtCrossings(segments) {
+  if (segments.length === 0) return segments
+
+  // Estimate cell size from average segment length
+  let totalLen = 0
+  for (const [[ax, ay], [bx, by]] of segments) {
+    totalLen += Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2)
+  }
+  const avgLen = totalLen / segments.length
+  const cellSize = Math.max(avgLen * 0.5, 0.01)
+
+  // Assign each segment to all grid cells it overlaps
+  const grid = new Map()
+  for (let i = 0; i < segments.length; i++) {
+    const [[ax, ay], [bx, by]] = segments[i]
+    const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx)
+    const y0 = Math.min(ay, by), y1 = Math.max(ay, by)
+    const cx0 = Math.floor(x0 / cellSize), cx1 = Math.floor(x1 / cellSize)
+    const cy0 = Math.floor(y0 / cellSize), cy1 = Math.floor(y1 / cellSize)
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const k = `${cx},${cy}`
+        if (!grid.has(k)) grid.set(k, [])
+        grid.get(k).push(i)
+      }
+    }
+  }
+
+  // Find all interior crossing t-parameters per segment
+  const crossings = segments.map(() => [])
+  const checked = new Set()
+
+  for (const bucket of grid.values()) {
+    for (let bi = 0; bi < bucket.length; bi++) {
+      for (let bj = bi + 1; bj < bucket.length; bj++) {
+        const i = bucket[bi], j = bucket[bj]
+        const pairKey = i < j ? `${i},${j}` : `${j},${i}`
+        if (checked.has(pairKey)) continue
+        checked.add(pairKey)
+
+        const [[ax, ay], [bx, by]] = segments[i]
+        const [[cx, cy], [dx, dy]] = segments[j]
+        const dxAB = bx - ax, dyAB = by - ay
+        const dxCD = dx - cx, dyCD = dy - cy
+
+        const denom = dxAB * dyCD - dyAB * dxCD
+        if (Math.abs(denom) < 1e-10) continue
+
+        const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom
+        const s = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom
+
+        // Only interior crossings (strictly between endpoints)
+        if (t > 1e-6 && t < 1 - 1e-6 && s > 1e-6 && s < 1 - 1e-6) {
+          crossings[i].push(t)
+          crossings[j].push(s)
+        }
+      }
+    }
+  }
+
+  // Split each segment at its crossing t-values
+  const result = []
+  for (let i = 0; i < segments.length; i++) {
+    const ts = crossings[i]
+    if (ts.length === 0) {
+      result.push(segments[i])
+      continue
+    }
+    ts.sort((a, b) => a - b)
+    const [[ax, ay], [bx, by]] = segments[i]
+    let prev = 0
+    for (const t of ts) {
+      const mx = ax + (bx - ax) * prev, my = ay + (by - ay) * prev
+      const nx = ax + (bx - ax) * t, ny = ay + (by - ay) * t
+      result.push([[mx, my], [nx, ny]])
+      prev = t
+    }
+    result.push([[ax + (bx - ax) * prev, ay + (by - ay) * prev], [bx, by]])
+  }
+  return result
 }
 
 function buildGraph(segments) {
@@ -133,7 +217,8 @@ function buildRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDir
   const allSegs = [...underSegs, ...overSegs]
   if (allSegs.length === 0) return []
 
-  const { verts, adj } = buildGraph(allSegs)
+  const splitSegs = splitAtCrossings(allSegs)
+  const { verts, adj } = buildGraph(splitSegs)
   const faces = findFaces(verts, adj)
 
   const interior = faces.filter(f => signedArea(f) > 0)
@@ -144,30 +229,10 @@ function buildRegionInstances(shapes, theta, delta, thick, bandWidth, parquetDir
   const median = sorted[Math.floor(sorted.length / 2)]
 
   const filtered = interior.filter((_, i) =>
-    areas[i] < median * 50 && areas[i] > median * 0.02
+    areas[i] < median * 100 && areas[i] > median * 0.001
   )
 
-  const instances = filtered.map(face => ({ poly: face, key: polygonKey(face) }))
-
-  // In thick mode the outer and inner band cycles are disconnected components,
-  // so the face-finder cannot see the corridor between them. Build each corridor
-  // quad directly from its four corner points.
-  if (thick) {
-    const corridors = getThickCorridorPolygons(
-      shapes, theta, delta, bandWidth,
-      parquetDirection, thetaMin, thetaMax,
-      parquetFunction, 0, 1,
-      linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale
-    )
-    for (let poly of corridors) {
-      const a = signedArea(poly)
-      if (Math.abs(a) < 1e-6) continue
-      if (a < 0) poly = [...poly].reverse()
-      instances.push({ poly, key: polygonKey(poly) })
-    }
-  }
-
-  return instances
+  return filtered.map(face => ({ poly: face, key: polygonKey(face) }))
 }
 
 // Returns one representative polygon per unique region type (for export).
