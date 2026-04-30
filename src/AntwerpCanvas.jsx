@@ -703,6 +703,9 @@ ${overPaths}
     getShapes() {
       return allShapesRef.current
     },
+    getFilteredShapes() {
+      return shapesRef.current
+    },
   }))
 
   return (
