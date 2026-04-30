@@ -1,4 +1,4 @@
-import { getHankinSegments } from './hankin'
+import { getHankinSegments, getThickCorridorPolygons } from './hankin'
 
 const SNAP = 0.1
 
@@ -151,6 +151,25 @@ export function computeRegions(shapes, theta, delta, thick, bandWidth, parquetDi
   for (const face of filtered) {
     const key = polygonKey(face)
     if (key && !byKey.has(key)) byKey.set(key, face)
+  }
+
+  // In thick mode the outer and inner band cycles are disconnected components,
+  // so the face-finder cannot see the corridor between them. Build each corridor
+  // quad directly from its four corner points and add it to the unique-region set.
+  if (thick) {
+    const corridors = getThickCorridorPolygons(
+      shapes, theta, delta, bandWidth,
+      parquetDirection, thetaMin, thetaMax,
+      parquetFunction, 0, 1,
+      linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale
+    )
+    for (let poly of corridors) {
+      const a = signedArea(poly)
+      if (Math.abs(a) < 1e-6) continue       // degenerate
+      if (a < 0) poly = [...poly].reverse()   // ensure CW winding (positive area)
+      const key = polygonKey(poly)
+      if (key && !byKey.has(key)) byKey.set(key, poly)
+    }
   }
 
   return Array.from(byKey.values())
