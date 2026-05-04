@@ -81,7 +81,8 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [show3D, setShow3D] = useState(false)
-  const [peakHeight, setPeakHeight] = useState(120)
+  const [peakHeight, setPeakHeight] = useState(10)
+  const [clampHeight, setClampHeight] = useState(30)
   const [shapes3D, setShapes3D] = useState([])
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
@@ -247,6 +248,7 @@ export default function App() {
             theta={thetaDeg * Math.PI / 180}
             delta={delta}
             peakHeight={peakHeight}
+            clampHeight={clampHeight}
             parquetDirection={parquetDirection}
             thetaMin={thetaMinDeg * Math.PI / 180}
             thetaMax={thetaMaxDeg * Math.PI / 180}
@@ -657,17 +659,30 @@ export default function App() {
             </div>
 
             {show3D && (
-              <div className="control-group">
-                <label htmlFor="peak-height-slider">Peak</label>
-                <input
-                  id="peak-height-slider"
-                  type="range"
-                  min={0} max={500} step={5}
-                  value={peakHeight}
-                  onChange={e => setPeakHeight(Number(e.target.value))}
-                />
-                <span className="slider-value">{peakHeight}</span>
-              </div>
+              <>
+                <div className="control-group">
+                  <label htmlFor="peak-height-slider">Peak</label>
+                  <input
+                    id="peak-height-slider"
+                    type="range"
+                    min={0} max={20} step={1}
+                    value={peakHeight}
+                    onChange={e => setPeakHeight(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{peakHeight}</span>
+                </div>
+                <div className="control-group">
+                  <label htmlFor="clamp-height-slider">Clamp</label>
+                  <input
+                    id="clamp-height-slider"
+                    type="range"
+                    min={0} max={50} step={1}
+                    value={clampHeight}
+                    onChange={e => setClampHeight(Number(e.target.value))}
+                  />
+                  <span className="slider-value">{clampHeight}</span>
+                </div>
+              </>
             )}
 
             <div className="shelf-divider" />

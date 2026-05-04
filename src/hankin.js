@@ -337,7 +337,8 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
     parquetDirection = 'none', thetaMin = theta, thetaMax = theta,
     parquetFunction = 'wave-ltr', time = 0, speed = 1,
     linearAngle = 0, centerX = 0, centerY = 0,
-    ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
+    ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1,
+    clampHeight = Infinity) {
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax,
     time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
@@ -351,6 +352,7 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
   }
 
   const triangles = []
+  const shouldClamp = peakHeight > 0 && clampHeight < peakHeight
 
   for (const shape of shapes) {
     const raw = shape[0]
@@ -379,10 +381,29 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
           const d = distToSeg(v, A, B)
           if (d < minD) { minD = d; V = v }
         }
-        triangles.push(
-          [[A[0], A[1], 0], [B[0], B[1], 0], [cen[0], cen[1], peakHeight]],
-          [[A[0], A[1], 0], [B[0], B[1], 0], [V[0], V[1], peakHeight]],
-        )
+
+        if (!shouldClamp) {
+          triangles.push(
+            [[A[0], A[1], 0], [B[0], B[1], 0], [cen[0], cen[1], peakHeight]],
+            [[A[0], A[1], 0], [B[0], B[1], 0], [V[0], V[1], peakHeight]],
+          )
+        } else {
+          const tc = clampHeight / peakHeight
+          // Interpolated cut points on centroid-side edges at z=clampHeight
+          const Ac = [A[0] + tc * (cen[0] - A[0]), A[1] + tc * (cen[1] - A[1]), clampHeight]
+          const Bc = [B[0] + tc * (cen[0] - B[0]), B[1] + tc * (cen[1] - B[1]), clampHeight]
+          // Interpolated cut points on vertex-side edges at z=clampHeight
+          const Av = [A[0] + tc * (V[0] - A[0]), A[1] + tc * (V[1] - A[1]), clampHeight]
+          const Bv = [B[0] + tc * (V[0] - B[0]), B[1] + tc * (V[1] - B[1]), clampHeight]
+          const Az = [A[0], A[1], 0]
+          const Bz = [B[0], B[1], 0]
+          // Centroid-side trapezoid
+          triangles.push([Az, Bz, Ac], [Bz, Bc, Ac])
+          // Vertex-side trapezoid
+          triangles.push([Az, Bz, Av], [Bz, Bv, Av])
+          // Flat top cap quad
+          triangles.push([Ac, Bc, Av], [Bc, Bv, Av])
+        }
       }
     }
   }
