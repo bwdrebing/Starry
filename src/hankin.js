@@ -330,6 +330,113 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
+// For each Hankin segment AB (at z=0), builds two triangles ABC and ABV where
+// C = centroid of backing tile (at z=peakHeight) and V = closest tile vertex to AB (at z=peakHeight).
+// Returns an array of triangles, each [[x1,y1,z1],[x2,y2,z2],[x3,y3,z3]].
+export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, peakHeight = 100,
+    parquetDirection = 'none', thetaMin = theta, thetaMax = theta,
+    parquetFunction = 'wave-ltr', time = 0, speed = 1,
+    linearAngle = 0, centerX = 0, centerY = 0,
+    ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1,
+    thick = false, bandWidth = 0.2) {
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax,
+    time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+
+  function distToSeg(p, a, b) {
+    const abx = b[0] - a[0], aby = b[1] - a[1]
+    const apx = p[0] - a[0], apy = p[1] - a[1]
+    const len2 = abx * abx + aby * aby
+    if (len2 < 1e-10) return Math.hypot(apx, apy)
+    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / len2))
+    return Math.hypot(apx - t * abx, apy - t * aby)
+  }
+
+  const triangles = []
+
+  for (const shape of shapes) {
+    const raw = shape[0]
+    if (!raw || raw.length < 3) continue
+    const vertices = ensureClockwise(raw)
+    const n = vertices.length
+    const cen = centroid(vertices)
+
+    if (thick) {
+      const [edges0, edges1] = makeEdgeRays(vertices, thetaAt, delta, true, bandWidth)
+
+      const computeStarPts = edges => Array.from({ length: n }, (_, i) => {
+        const j = (i + 1) % n
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const ptInside = pt && pointInPolygon(pt, vertices)
+        return ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+      })
+
+      const starPts0 = computeStarPts(edges0)
+      const starPts1 = computeStarPts(edges1)
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const M0 = starPts0[i], M1 = starPts1[i]
+
+        // For each of the two rays in this edge pair, get both thick variants
+        for (const [P0, E0, P1, E1] of [
+          [edges0[i].left.origin,  M0, edges1[i].left.origin,  M1],
+          [edges0[j].right.origin, M0, edges1[j].right.origin, M1],
+        ]) {
+          // Closest vertex to the midpoint of both segments
+          const refX = (P0[0] + E0[0] + P1[0] + E1[0]) / 4
+          const refY = (P0[1] + E0[1] + P1[1] + E1[1]) / 4
+          let V = vertices[0], minDV = Infinity
+          for (const v of vertices) {
+            const d = (v[0] - refX) ** 2 + (v[1] - refY) ** 2
+            if (d < minDV) { minDV = d; V = v }
+          }
+
+          // Which segment is closer to the centroid?
+          const d0C = ((P0[0] + E0[0]) / 2 - cen[0]) ** 2 + ((P0[1] + E0[1]) / 2 - cen[1]) ** 2
+          const d1C = ((P1[0] + E1[0]) / 2 - cen[0]) ** 2 + ((P1[1] + E1[1]) / 2 - cen[1]) ** 2
+          const [Pc, Ec, Pv, Ev] = d0C < d1C ? [P0, E0, P1, E1] : [P1, E1, P0, E0]
+
+          // Flat triangles at z=0
+          triangles.push(
+            [[Pc[0], Pc[1], 0], [Ec[0], Ec[1], 0], [cen[0], cen[1], 0]],
+            [[Pv[0], Pv[1], 0], [Ev[0], Ev[1], 0], [V[0],   V[1],   0]],
+          )
+        }
+      }
+    } else {
+      const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, 0.2)
+
+      const starPts = Array.from({ length: n }, (_, i) => {
+        const j = (i + 1) % n
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const ptInside = pt && pointInPolygon(pt, vertices)
+        return ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+      })
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const M = starPts[i]
+        for (const [A, B] of [[edges[i].left.origin, M], [edges[j].right.origin, M]]) {
+          let V = vertices[0]
+          let minD = Infinity
+          for (const v of vertices) {
+            const d = distToSeg(v, A, B)
+            if (d < minD) { minD = d; V = v }
+          }
+          triangles.push(
+            [[A[0], A[1], 0], [B[0], B[1], 0], [cen[0], cen[1], peakHeight]],
+            [[A[0], A[1], 0], [B[0], B[1], 0], [V[0],   V[1],   peakHeight]],
+          )
+        }
+      }
+    }
+  }
+
+  return triangles
+}
+
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
   const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
