@@ -5,7 +5,8 @@ import { getHankin3DTriangles } from './hankin'
 
 export default function PyramidCanvas({
   shapes,
-  theta, delta, peakHeight, clampHeight = Infinity,
+  theta, delta, peakHeight,
+  thick, bandWidth,
   parquetDirection, thetaMin, thetaMax,
   parquetFunction, linearAngle,
   centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale,
@@ -78,7 +79,7 @@ export default function PyramidCanvas({
     }
   }, [])
 
-  // Rebuild pyramid mesh whenever shapes or parameters change
+  // Rebuild mesh whenever shapes or parameters change
   useEffect(() => {
     const three = threeRef.current
     if (!three || !shapes || shapes.length === 0) return
@@ -92,7 +93,7 @@ export default function PyramidCanvas({
       parquetDirection, thetaMin, thetaMax,
       parquetFunction, 0, 1,
       linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale,
-      clampHeight,
+      thick, bandWidth,
     )
     if (triangles.length === 0) return
 
@@ -100,10 +101,10 @@ export default function PyramidCanvas({
     const normals   = []
     const colors    = []
 
-    const maxZ = Math.max(Math.min(peakHeight, clampHeight), 1)
+    const ph = Math.max(peakHeight, 1)
 
     const vertColor = z => {
-      const t = Math.max(0, Math.min(1, z / maxZ))
+      const t = Math.max(0, Math.min(1, z / ph))
       // dark indigo at z=0 → bright blue-white at z=peakHeight
       return [0.04 + t * 0.56, 0.08 + t * 0.72, 0.28 + t * 0.65]
     }
@@ -143,7 +144,7 @@ export default function PyramidCanvas({
     const mesh = new THREE.Mesh(geo, mat)
     mesh.name = 'pyramids'
     scene.add(mesh)
-  }, [shapes, theta, delta, peakHeight, clampHeight, parquetDirection, thetaMin, thetaMax,
+  }, [shapes, theta, delta, peakHeight, thick, bandWidth, parquetDirection, thetaMin, thetaMax,
       parquetFunction, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale])
 
   return <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />

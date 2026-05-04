@@ -338,7 +338,7 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
     parquetFunction = 'wave-ltr', time = 0, speed = 1,
     linearAngle = 0, centerX = 0, centerY = 0,
     ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1,
-    clampHeight = Infinity) {
+    thick = false, bandWidth = 0.2) {
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax,
     time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
@@ -352,7 +352,6 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
   }
 
   const triangles = []
-  const shouldClamp = peakHeight > 0 && clampHeight < peakHeight
 
   for (const shape of shapes) {
     const raw = shape[0]
@@ -361,48 +360,75 @@ export function getHankin3DTriangles(shapes, theta = Math.PI / 4, delta = 0, pea
     const n = vertices.length
     const cen = centroid(vertices)
 
-    const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, 0.2)
+    if (thick) {
+      const [edges0, edges1] = makeEdgeRays(vertices, thetaAt, delta, true, bandWidth)
 
-    const starPts = Array.from({ length: n }, (_, i) => {
-      const j = (i + 1) % n
-      const rayA = edges[i].left, rayB = edges[j].right
-      const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
-      const ptInside = pt && pointInPolygon(pt, vertices)
-      return ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-    })
+      const computeStarPts = edges => Array.from({ length: n }, (_, i) => {
+        const j = (i + 1) % n
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const ptInside = pt && pointInPolygon(pt, vertices)
+        return ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+      })
 
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n
-      const M = starPts[i]
-      for (const [A, B] of [[edges[i].left.origin, M], [edges[j].right.origin, M]]) {
-        let V = vertices[0]
-        let minD = Infinity
-        for (const v of vertices) {
-          const d = distToSeg(v, A, B)
-          if (d < minD) { minD = d; V = v }
+      const starPts0 = computeStarPts(edges0)
+      const starPts1 = computeStarPts(edges1)
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const M0 = starPts0[i], M1 = starPts1[i]
+
+        // For each of the two rays in this edge pair, get both thick variants
+        for (const [P0, E0, P1, E1] of [
+          [edges0[i].left.origin,  M0, edges1[i].left.origin,  M1],
+          [edges0[j].right.origin, M0, edges1[j].right.origin, M1],
+        ]) {
+          // Closest vertex to the midpoint of both segments
+          const refX = (P0[0] + E0[0] + P1[0] + E1[0]) / 4
+          const refY = (P0[1] + E0[1] + P1[1] + E1[1]) / 4
+          let V = vertices[0], minDV = Infinity
+          for (const v of vertices) {
+            const d = (v[0] - refX) ** 2 + (v[1] - refY) ** 2
+            if (d < minDV) { minDV = d; V = v }
+          }
+
+          // Which segment is closer to the centroid?
+          const d0C = ((P0[0] + E0[0]) / 2 - cen[0]) ** 2 + ((P0[1] + E0[1]) / 2 - cen[1]) ** 2
+          const d1C = ((P1[0] + E1[0]) / 2 - cen[0]) ** 2 + ((P1[1] + E1[1]) / 2 - cen[1]) ** 2
+          const [Pc, Ec, Pv, Ev] = d0C < d1C ? [P0, E0, P1, E1] : [P1, E1, P0, E0]
+
+          // Flat triangles at z=0
+          triangles.push(
+            [[Pc[0], Pc[1], 0], [Ec[0], Ec[1], 0], [cen[0], cen[1], 0]],
+            [[Pv[0], Pv[1], 0], [Ev[0], Ev[1], 0], [V[0],   V[1],   0]],
+          )
         }
+      }
+    } else {
+      const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, 0.2)
 
-        if (!shouldClamp) {
+      const starPts = Array.from({ length: n }, (_, i) => {
+        const j = (i + 1) % n
+        const rayA = edges[i].left, rayB = edges[j].right
+        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+        const ptInside = pt && pointInPolygon(pt, vertices)
+        return ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+      })
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n
+        const M = starPts[i]
+        for (const [A, B] of [[edges[i].left.origin, M], [edges[j].right.origin, M]]) {
+          let V = vertices[0]
+          let minD = Infinity
+          for (const v of vertices) {
+            const d = distToSeg(v, A, B)
+            if (d < minD) { minD = d; V = v }
+          }
           triangles.push(
             [[A[0], A[1], 0], [B[0], B[1], 0], [cen[0], cen[1], peakHeight]],
-            [[A[0], A[1], 0], [B[0], B[1], 0], [V[0], V[1], peakHeight]],
+            [[A[0], A[1], 0], [B[0], B[1], 0], [V[0],   V[1],   peakHeight]],
           )
-        } else {
-          const tc = clampHeight / peakHeight
-          // Interpolated cut points on centroid-side edges at z=clampHeight
-          const Ac = [A[0] + tc * (cen[0] - A[0]), A[1] + tc * (cen[1] - A[1]), clampHeight]
-          const Bc = [B[0] + tc * (cen[0] - B[0]), B[1] + tc * (cen[1] - B[1]), clampHeight]
-          // Interpolated cut points on vertex-side edges at z=clampHeight
-          const Av = [A[0] + tc * (V[0] - A[0]), A[1] + tc * (V[1] - A[1]), clampHeight]
-          const Bv = [B[0] + tc * (V[0] - B[0]), B[1] + tc * (V[1] - B[1]), clampHeight]
-          const Az = [A[0], A[1], 0]
-          const Bz = [B[0], B[1], 0]
-          // Centroid-side trapezoid
-          triangles.push([Az, Bz, Ac], [Bz, Bc, Ac])
-          // Vertex-side trapezoid
-          triangles.push([Az, Bz, Av], [Bz, Bv, Av])
-          // Flat top cap quad
-          triangles.push([Ac, Bc, Av], [Bc, Bv, Av])
         }
       }
     }
