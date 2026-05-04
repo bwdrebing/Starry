@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
+import PyramidCanvas from './PyramidCanvas'
 import TilingGallery from './TilingGallery'
 import { VERTEX_COLORS } from './truchet'
 import { SQUARE_VERTEX_COLORS } from './squareTruchet'
@@ -79,8 +80,13 @@ export default function App() {
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
+  const [show3D, setShow3D] = useState(false)
+  const [peakHeight, setPeakHeight] = useState(120)
+  const [shapes3D, setShapes3D] = useState([])
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
+
+  const handleShapesChange = useCallback(shapes => setShapes3D(shapes.slice()), [])
   const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
 
@@ -192,7 +198,7 @@ export default function App() {
     <div className="app">
       <StarryCanvas />
 
-      <div className="canvas-layer">
+      <div className="canvas-layer" style={show3D ? { visibility: 'hidden', pointerEvents: 'none' } : {}}>
         <AntwerpCanvas
           ref={canvasRef}
           configuration={TILINGS[tilingIndex].config}
@@ -229,9 +235,31 @@ export default function App() {
             setSelectedTileIdx(idx)
             setSelectedTileMeta(meta)
           }}
+          onShapesChange={handleShapesChange}
           selectedTileIdx={selectedTileIdx}
         />
       </div>
+
+      {show3D && (
+        <div className="canvas-layer">
+          <PyramidCanvas
+            shapes={shapes3D}
+            theta={thetaDeg * Math.PI / 180}
+            delta={delta}
+            peakHeight={peakHeight}
+            parquetDirection={parquetDirection}
+            thetaMin={thetaMinDeg * Math.PI / 180}
+            thetaMax={thetaMaxDeg * Math.PI / 180}
+            parquetFunction={parquetFunction}
+            linearAngle={linearAngle}
+            centerX={parquetCenterX}
+            centerY={parquetCenterY}
+            ellipseAngle={ellipseAngle}
+            ellipseMajorScale={ellipseMajorScale}
+            ellipseMinorScale={ellipseMinorScale}
+          />
+        </div>
+      )}
 
       <div className="controls-shelf">
         <button className="shelf-handle" onClick={() => setShelfCollapsed(c => !c)}>
@@ -615,6 +643,34 @@ export default function App() {
                 Export SVG
               </button>
             </div>
+
+            <div className="shelf-divider" />
+
+            <div className="control-group">
+              <label htmlFor="mode-3d-check">3D</label>
+              <input
+                id="mode-3d-check"
+                type="checkbox"
+                checked={show3D}
+                onChange={e => setShow3D(e.target.checked)}
+              />
+            </div>
+
+            {show3D && (
+              <div className="control-group">
+                <label htmlFor="peak-height-slider">Peak</label>
+                <input
+                  id="peak-height-slider"
+                  type="range"
+                  min={0} max={500} step={5}
+                  value={peakHeight}
+                  onChange={e => setPeakHeight(Number(e.target.value))}
+                />
+                <span className="slider-value">{peakHeight}</span>
+              </div>
+            )}
+
+            <div className="shelf-divider" />
 
             <label className="debug-toggle">
               <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
