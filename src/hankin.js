@@ -240,7 +240,7 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   return () => theta
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
   const allUnder = [], allOver = []
 
   // Build a position→theta mapping. Edge midpoints are used as the sample point
@@ -255,10 +255,13 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
+    // Skip only applies to polygons with 6+ sides to avoid degenerate cases.
+    const effectiveSkip = n >= 6 ? skip : 0
+
     const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
     const sp = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
-        const j = (i + 1) % n
+        const j = (i + 1 + effectiveSkip) % n
         const rayA = edges[i].left, rayB = edges[j].right
         const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
         const ptInside = pt && pointInPolygon(pt, vertices)
@@ -267,71 +270,101 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
       })
     )
 
-    // Build per-band geometry. aSegs = A+ rays (left ray of edge i, origin on edge i).
-    // bSegs = B- rays (right ray of edge i+1, origin on edge i+1).
+    // aSegs = left ray of edge i; bSegs = right ray of the paired edge (i+1+skip)%n.
     const bands = Array.from({ length: n }, (_, i) => {
-      const j = (i + 1) % n
-      const va = vertices[i], vb = vertices[j]
+      const jNext = (i + 1) % n
+      const jPair = (i + 1 + effectiveSkip) % n
+      const va = vertices[i], vb = vertices[jNext]
       const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
       const aSegs = [], bSegs = []
       for (let di = 0; di < allEdgeRays.length; di++) {
         const end = sp[di][i].endA
-        aSegs.push({ origin: allEdgeRays[di][i].left.origin,  dir: allEdgeRays[di][i].left.dir,  end })
-        bSegs.push({ origin: allEdgeRays[di][j].right.origin, dir: allEdgeRays[di][j].right.dir, end })
+        aSegs.push({ origin: allEdgeRays[di][i].left.origin,      dir: allEdgeRays[di][i].left.dir,      end })
+        bSegs.push({ origin: allEdgeRays[di][jPair].right.origin, dir: allEdgeRays[di][jPair].right.dir, end })
       }
       return { aSegs, bSegs, edgeLen }
     })
 
-    // Draw each band clipped by band(i+1) (clockwise-next goes on top).
-    // A+ segments go from edge i toward M — they pass behind band(i+1) at their END,
-    // so draw from origin to the first crossing with band(i+1).
-    // B- segments go from edge i+1 toward M — they start behind band(i+1) (same edge),
-    // so draw from the last crossing with band(i+1) to M.
     const lerpPt = (seg, t) => [
       seg.origin[0] + t * (seg.end[0] - seg.origin[0]),
       seg.origin[1] + t * (seg.end[1] - seg.origin[1]),
     ]
     const segLen = seg => Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
 
-    for (let i = 0; i < n; i++) {
-      const { aSegs, bSegs, edgeLen } = bands[i]
-      const nextSegs = [...bands[(i + 1) % n].aSegs, ...bands[(i + 1) % n].bSegs]
-      const extraGap = overlapGap * edgeLen
-
-      const crossings = seg => nextSegs
-        .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
-        .map(t => Math.max(0, Math.min(1, t)))
-        .sort((a, b) => a - b)
-
-      const process = (segs, list) => {
-        for (const seg of segs) {
-          if (overlap && thick) {
-            const ts = crossings(seg)
+    if (effectiveSkip > 0) {
+      // Over-segments are always drawn whole. Under-segments have gaps cut wherever
+      // they cross an over-segment from any other band (since skip makes lines travel
+      // across multiple bands before reaching their star point).
+      for (let i = 0; i < n; i++) {
+        for (const seg of bands[i].aSegs) allOver.push([seg.origin, seg.end])
+      }
+      for (let i = 0; i < n; i++) {
+        const { bSegs, edgeLen } = bands[i]
+        const otherASegs = bands.flatMap((b, bi) => bi !== i ? b.aSegs : [])
+        const extraGap = overlapGap * edgeLen
+        for (const seg of bSegs) {
+          if (overlap && thick && otherASegs.length > 0) {
+            const ts = otherASegs
+              .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+              .map(t => Math.max(0, Math.min(1, t)))
+              .sort((a, b) => a - b)
             if (ts.length > 0) {
               const g = extraGap / segLen(seg)
               const t0 = Math.max(0, ts[0] - g)
               const t1 = Math.min(1, ts[ts.length - 1] + g)
-              if (t0 > 1e-6)       list.push([seg.origin, lerpPt(seg, t0)])
-              if (t1 < 1 - 1e-6)  list.push([lerpPt(seg, t1), seg.end])
+              if (t0 > 1e-6)      allUnder.push([seg.origin, lerpPt(seg, t0)])
+              if (t1 < 1 - 1e-6) allUnder.push([lerpPt(seg, t1), seg.end])
             } else {
-              list.push([seg.origin, seg.end])
+              allUnder.push([seg.origin, seg.end])
             }
           } else {
-            list.push([seg.origin, seg.end])
+            allUnder.push([seg.origin, seg.end])
           }
         }
       }
+    } else {
+      // Default: each band's under-segments are only clipped against the immediately
+      // adjacent band (sufficient for skip=0 where lines don't travel far).
+      for (let i = 0; i < n; i++) {
+        const { aSegs, bSegs, edgeLen } = bands[i]
+        const nextSegs = [...bands[(i + 1) % n].aSegs, ...bands[(i + 1) % n].bSegs]
+        const extraGap = overlapGap * edgeLen
 
-      process(aSegs, allOver)
-      process(bSegs, allUnder)
+        const crossings = seg => nextSegs
+          .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+          .map(t => Math.max(0, Math.min(1, t)))
+          .sort((a, b) => a - b)
+
+        const process = (segs, list) => {
+          for (const seg of segs) {
+            if (overlap && thick) {
+              const ts = crossings(seg)
+              if (ts.length > 0) {
+                const g = extraGap / segLen(seg)
+                const t0 = Math.max(0, ts[0] - g)
+                const t1 = Math.min(1, ts[ts.length - 1] + g)
+                if (t0 > 1e-6)       list.push([seg.origin, lerpPt(seg, t0)])
+                if (t1 < 1 - 1e-6)  list.push([lerpPt(seg, t1), seg.end])
+              } else {
+                list.push([seg.origin, seg.end])
+              }
+            } else {
+              list.push([seg.origin, seg.end])
+            }
+          }
+        }
+
+        process(aSegs, allOver)
+        process(bSegs, allUnder)
+      }
     }
   }
 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
@@ -352,11 +385,12 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
+      const effectiveSkipDbg = n >= 6 ? skip : 0
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
       for (let di = 0; di < allEdgeRays.length; di++) {
         const edges = allEdgeRays[di]
         for (let i = 0; i < n; i++) {
-          const j = (i + 1) % n
+          const j = (i + 1 + effectiveSkipDbg) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
           const ptInside = pt && pointInPolygon(pt, vertices)
