@@ -79,6 +79,7 @@ export default function App() {
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
+  const [skip, setSkip] = useState(0)
   const [shelfCollapsed, setShelfCollapsed] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
@@ -217,6 +218,7 @@ export default function App() {
           ellipseAngle={ellipseAngle}
           ellipseMajorScale={ellipseMajorScale}
           ellipseMinorScale={ellipseMinorScale}
+          skip={skip}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
@@ -503,6 +505,18 @@ export default function App() {
                 onChange={e => setDelta(Number(e.target.value))}
               />
               <span className="slider-value">{delta.toFixed(2)}</span>
+            </div>
+
+            <div className="control-group">
+              <label htmlFor="skip-slider">Skip</label>
+              <input
+                id="skip-slider"
+                type="range"
+                min={0} max={3} step={1}
+                value={skip}
+                onChange={e => setSkip(Number(e.target.value))}
+              />
+              <span className="slider-value">{skip}</span>
             </div>
 
             <div className="control-group">
