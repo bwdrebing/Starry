@@ -378,7 +378,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
           const ts = overSegs
             .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
             .map(t => Math.max(0, Math.min(1, t)))
-            .filter(t => t > 1e-6 && t < 1 - 1e-6)
+            .filter(t => t >= 0 && t < 1 - 1e-6)
           if (ts.length === 0) continue
           // One contiguous gap per over-strand (entry to exit through its ribbon)
           intervals.push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
