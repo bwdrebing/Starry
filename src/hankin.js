@@ -301,7 +301,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         outer: for (const sa of strands[i].segs) {
           for (const sb of strands[j].segs) {
             const ts = bandCrossParam(sa.origin, sa.end, sb.origin, sb.end)
-            if (ts.some(t => t > 1e-6 && t < 1 - 1e-6)) { found = true; break outer }
+            if (ts.some(t => t > -1e-4 && t < 1 - 1e-6)) { found = true; break outer }
           }
         }
         if (found) { adj[i].push(j); adj[j].push(i) }
