@@ -310,6 +310,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         const extraG = sl > 1e-8 ? (overlapGap * strand.edgeLen) / sl : 0
         const intervals = []
         for (const bplusStrand of strands) {
+          if (bplusStrand === strand) continue
           const ts = bplusStrand.segs
             .filter(s => s.band === 0)
             .flatMap(c => bandCrossParam(bminusSeg.origin, bminusSeg.end, c.origin, c.end))
