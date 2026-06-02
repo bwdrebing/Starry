@@ -409,10 +409,13 @@ const REGION_COLORS = [
   'rgba(155,255,155,0.35)',
 ]
 
-// Fills the two kinds of enclosed regions produced by the Hankin motif:
-//   tile-centre — polygon of star points (sorted angularly round the tile centroid)
-//   vertex      — polygon of the closest star point from each tile sharing that vertex
-// Regions with the same shape key get the same colour.
+// Region boundaries follow the Hankin rays: vertices alternate between star points
+// (ray intersections) and tile-edge midpoints (where the rays originate from).
+// Sorting all 2n points by angle around the region centre naturally interleaves them.
+//
+// Tile-centre region: n star points + n tile-edge midpoints → 2n-gon.
+// Vertex region:      k star points (one per adjacent tile) + k edge midpoints
+//                     (one per edge radiating from the vertex) → 2k-gon.
 function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
   const colorMap = new Map()
   let nextIdx = 0
@@ -421,8 +424,18 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
     return colorMap.get(key)
   }
 
-  // vertex key → { pos, entries: [{starPt, tileN}] }
+  const SNAP = 0.5  // tolerance for deduplicating shared points
+  // vertex key → { pos, stars:[{pt,tileN}], edgeMids:[[x,y]…] }
   const vertexMap = new Map()
+
+  function fillPoly(pts) {
+    if (pts.length < 3) return
+    ctx.beginPath()
+    ctx.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+    ctx.closePath()
+    ctx.fill()
+  }
 
   ctx.save()
 
@@ -444,52 +457,58 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
         : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
     })
 
-    // Tile-centre region: star points sorted angularly round the centroid
-    const sorted = [...starPts].sort((a, b) =>
-      Math.atan2(a[1] - c[1], a[0] - c[0]) - Math.atan2(b[1] - c[1], b[0] - c[0]))
-    ctx.fillStyle = colorFor(`t${n}`)
-    ctx.beginPath()
-    ctx.moveTo(sorted[0][0], sorted[0][1])
-    for (let i = 1; i < sorted.length; i++) ctx.lineTo(sorted[i][0], sorted[i][1])
-    ctx.closePath()
-    ctx.fill()
+    // Midpoint of each tile edge (shared with the neighbour tile)
+    const tileMids = Array.from({ length: n }, (_, i) => {
+      const a = vertices[i], b = vertices[(i + 1) % n]
+      return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    })
 
-    // Accumulate one star-point-per-vertex for vertex regions.
-    // Round to 0.5-unit grid so the same physical vertex from adjacent tiles hashes identically.
+    // Tile-centre region: interleave star points with edge midpoints sorted by angle
+    const tilePoly = [...starPts, ...tileMids]
+      .sort((a, b) => Math.atan2(a[1] - c[1], a[0] - c[0]) - Math.atan2(b[1] - c[1], b[0] - c[0]))
+    ctx.fillStyle = colorFor(`t${n}`)
+    fillPoly(tilePoly)
+
+    // Accumulate vertex-region data. Round to 0.5-unit grid for stable key matching.
     for (let k = 0; k < n; k++) {
       const v = vertices[k]
       const vkey = `${Math.round(v[0] * 2)},${Math.round(v[1] * 2)}`
+
       let best = starPts[0], bestD = Infinity
       for (const sp of starPts) {
         const d = (sp[0] - v[0]) ** 2 + (sp[1] - v[1]) ** 2
         if (d < bestD) { bestD = d; best = sp }
       }
-      if (!vertexMap.has(vkey)) vertexMap.set(vkey, { pos: v, entries: [] })
-      vertexMap.get(vkey).entries.push({ starPt: best, tileN: n })
+
+      if (!vertexMap.has(vkey)) vertexMap.set(vkey, { pos: v, stars: [], edgeMids: [] })
+      const vm = vertexMap.get(vkey)
+      vm.stars.push({ pt: best, tileN: n })
+
+      // Two edge midpoints radiating outward from V; shared with neighbours so dedup by position.
+      for (const mid of [tileMids[k], tileMids[(k - 1 + n) % n]]) {
+        if (!vm.edgeMids.some(m => Math.abs(m[0] - mid[0]) < SNAP && Math.abs(m[1] - mid[1]) < SNAP))
+          vm.edgeMids.push(mid)
+      }
     }
   }
 
   // Vertex regions
-  for (const { pos: v, entries } of vertexMap.values()) {
-    if (entries.length < 3) continue
-    // Remove duplicate star points (same tile can register the same sp via two vertices)
-    const uniq = entries.filter((e, idx) =>
-      entries.findIndex(f =>
-        Math.abs(f.starPt[0] - e.starPt[0]) < 0.5 &&
-        Math.abs(f.starPt[1] - e.starPt[1]) < 0.5) === idx)
+  for (const { pos: v, stars, edgeMids } of vertexMap.values()) {
+    if (stars.length < 3) continue
+    const uniq = stars.filter((e, idx) =>
+      stars.findIndex(f =>
+        Math.abs(f.pt[0] - e.pt[0]) < SNAP &&
+        Math.abs(f.pt[1] - e.pt[1]) < SNAP) === idx)
     if (uniq.length < 3) continue
-    // Sort angularly round the vertex so the polygon winds consistently
-    uniq.sort((a, b) =>
-      Math.atan2(a.starPt[1] - v[1], a.starPt[0] - v[0]) -
-      Math.atan2(b.starPt[1] - v[1], b.starPt[0] - v[0]))
-    // Shape key: degree + sorted tile-n tuple (rotation-invariant)
+
+    // Merge star points and edge midpoints; sort angularly round the vertex
+    const allPts = [...uniq.map(e => e.pt), ...edgeMids]
+      .sort((a, b) =>
+        Math.atan2(a[1] - v[1], a[0] - v[0]) - Math.atan2(b[1] - v[1], b[0] - v[0]))
+
     const nsKey = uniq.map(e => e.tileN).sort((a, b) => a - b).join('.')
     ctx.fillStyle = colorFor(`v${uniq.length}.${nsKey}`)
-    ctx.beginPath()
-    ctx.moveTo(uniq[0].starPt[0], uniq[0].starPt[1])
-    for (let i = 1; i < uniq.length; i++) ctx.lineTo(uniq[i].starPt[0], uniq[i].starPt[1])
-    ctx.closePath()
-    ctx.fill()
+    fillPoly(allPts)
   }
 
   ctx.restore()
