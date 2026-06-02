@@ -392,7 +392,118 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
+// Semi-transparent palette for region fills; assigned in encounter order so same-shape
+// regions always get the same colour within a single draw call.
+const REGION_COLORS = [
+  'rgba(255, 80, 80,0.35)',
+  'rgba( 70,145,255,0.35)',
+  'rgba( 70,215,110,0.35)',
+  'rgba(200, 70,255,0.35)',
+  'rgba(255,200, 45,0.35)',
+  'rgba( 70,225,225,0.35)',
+  'rgba(255,135, 45,0.35)',
+  'rgba(175,240, 70,0.35)',
+  'rgba(255, 70,175,0.35)',
+  'rgba(115,195,255,0.35)',
+  'rgba(255,175, 95,0.35)',
+  'rgba(155,255,155,0.35)',
+]
+
+// Fills the two kinds of enclosed regions produced by the Hankin motif:
+//   tile-centre — polygon of star points (sorted angularly round the tile centroid)
+//   vertex      — polygon of the closest star point from each tile sharing that vertex
+// Regions with the same shape key get the same colour.
+function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
+  const colorMap = new Map()
+  let nextIdx = 0
+  const colorFor = key => {
+    if (!colorMap.has(key)) colorMap.set(key, REGION_COLORS[nextIdx++ % REGION_COLORS.length])
+    return colorMap.get(key)
+  }
+
+  // vertex key → { pos, entries: [{starPt, tileN}] }
+  const vertexMap = new Map()
+
+  ctx.save()
+
+  for (const shape of shapes) {
+    const raw = shape[0]
+    if (!raw || raw.length < 3) continue
+    const vertices = ensureClockwise(raw)
+    const n = vertices.length
+    const effectiveSkip = n >= 6 ? skip : 0
+    const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, bandWidth)
+    const c = centroid(vertices)
+
+    const starPts = Array.from({ length: n }, (_, i) => {
+      const j = (i + 1 + effectiveSkip) % n
+      const rayA = edges[i].left, rayB = edges[j].right
+      const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+      return (pt && pointInPolygon(pt, vertices))
+        ? pt
+        : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+    })
+
+    // Tile-centre region: star points sorted angularly round the centroid
+    const sorted = [...starPts].sort((a, b) =>
+      Math.atan2(a[1] - c[1], a[0] - c[0]) - Math.atan2(b[1] - c[1], b[0] - c[0]))
+    ctx.fillStyle = colorFor(`t${n}`)
+    ctx.beginPath()
+    ctx.moveTo(sorted[0][0], sorted[0][1])
+    for (let i = 1; i < sorted.length; i++) ctx.lineTo(sorted[i][0], sorted[i][1])
+    ctx.closePath()
+    ctx.fill()
+
+    // Accumulate one star-point-per-vertex for vertex regions.
+    // Round to 0.5-unit grid so the same physical vertex from adjacent tiles hashes identically.
+    for (let k = 0; k < n; k++) {
+      const v = vertices[k]
+      const vkey = `${Math.round(v[0] * 2)},${Math.round(v[1] * 2)}`
+      let best = starPts[0], bestD = Infinity
+      for (const sp of starPts) {
+        const d = (sp[0] - v[0]) ** 2 + (sp[1] - v[1]) ** 2
+        if (d < bestD) { bestD = d; best = sp }
+      }
+      if (!vertexMap.has(vkey)) vertexMap.set(vkey, { pos: v, entries: [] })
+      vertexMap.get(vkey).entries.push({ starPt: best, tileN: n })
+    }
+  }
+
+  // Vertex regions
+  for (const { pos: v, entries } of vertexMap.values()) {
+    if (entries.length < 3) continue
+    // Remove duplicate star points (same tile can register the same sp via two vertices)
+    const uniq = entries.filter((e, idx) =>
+      entries.findIndex(f =>
+        Math.abs(f.starPt[0] - e.starPt[0]) < 0.5 &&
+        Math.abs(f.starPt[1] - e.starPt[1]) < 0.5) === idx)
+    if (uniq.length < 3) continue
+    // Sort angularly round the vertex so the polygon winds consistently
+    uniq.sort((a, b) =>
+      Math.atan2(a.starPt[1] - v[1], a.starPt[0] - v[0]) -
+      Math.atan2(b.starPt[1] - v[1], b.starPt[0] - v[0]))
+    // Shape key: degree + sorted tile-n tuple (rotation-invariant)
+    const nsKey = uniq.map(e => e.tileN).sort((a, b) => a - b).join('.')
+    ctx.fillStyle = colorFor(`v${uniq.length}.${nsKey}`)
+    ctx.beginPath()
+    ctx.moveTo(uniq[0].starPt[0], uniq[0].starPt[1])
+    for (let i = 1; i < uniq.length; i++) ctx.lineTo(uniq[i].starPt[0], uniq[i].starPt[1])
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  ctx.restore()
+}
+
 export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+  // Compute thetaAt once when in debug mode; reused by both region fills and ray visualisation.
+  const thetaAt = debug
+    ? buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+    : null
+
+  // Region fills drawn first so they sit behind the motif lines
+  if (debug) drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip)
+
   const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
 
   for (const [p1, p2] of underSegs) {
@@ -403,7 +514,6 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   }
 
   if (debug) {
-    const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
     const r = 3 / (ctx.getTransform?.().a ?? 1)
     ctx.save()
     ctx.lineWidth = 1 / (ctx.getTransform?.().a ?? 1)
