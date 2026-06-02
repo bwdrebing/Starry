@@ -1,7 +1,14 @@
 // Hankin "Polygons in Contact" algorithm.
-// Each polygon edge generates two rays angled inward at ±θ from the inward normal.
-// The right ray of edge i pairs *only* with the left ray of adjacent edge i+1.
-// These converge at a star point; both are drawn from their origin to that point.
+// Each edge emits two rays at ±θ from its inward normal; the left ray of edge i
+// pairs with the right ray of edge (i+1+skip)%n, converging at a star point.
+//
+// Thick mode: each ray becomes two offset band-edge lines (bplus outer, bminus inner).
+// Overlap mode: ribbons weave over/under using BFS 2-colouring of the crossing graph.
+//   Each pair of strands is adjacent in the graph if any of their segments cross.
+//   A bipartite colouring assigns colour-0 (over) and colour-1 (under) consistently.
+//   Odd-cycle components fall back to the A-over-B rule (left ray always over).
+//   Under-segments get individual gaps at each crossing with each over-strand,
+//   so multiple crossings produce multiple separate gaps rather than one big span.
 
 function rotate2D([x, y], a) {
   const c = Math.cos(a), s = Math.sin(a)
@@ -23,7 +30,6 @@ function centroid(vertices) {
 }
 
 // Returns [t, s, point] for the intersection of ray (o1+t*d1) and (o2+s*d2), or null.
-// Both t and s must be positive (rays go forward).
 function rayIntersect(o1, d1, o2, d2) {
   const denom = cross2D(d1, d2)
   if (Math.abs(denom) < 1e-10) return null
@@ -34,7 +40,6 @@ function rayIntersect(o1, d1, o2, d2) {
   return [t, s, add2D(o1, scale2D(d1, t))]
 }
 
-// Ray-casting point-in-polygon test.
 function pointInPolygon([px, py], vertices) {
   const n = vertices.length
   let inside = false
@@ -46,7 +51,6 @@ function pointInPolygon([px, py], vertices) {
   return inside
 }
 
-// Returns the point where a ray (origin + t*dir, t > 0) first exits the polygon.
 function rayExitPolygon(origin, dir, vertices) {
   const n = vertices.length
   let minT = Infinity
@@ -63,18 +67,12 @@ function rayExitPolygon(origin, dir, vertices) {
   return minT < Infinity ? [origin[0] + dir[0] * minT, origin[1] + dir[1] * minT] : null
 }
 
-// Builds per-edge ray pairs, returning an array of edge-ray variants:
-//   one variant for non-thick mode, two (inner + outer band) for thick mode.
-//
-// thetaAt is a function (x, y) => theta evaluated at each edge's midpoint.
-// halfThickDelta is also computed per-edge from thetaAt(mid) so that both tiles
-// sharing an edge use the same band offsets, keeping thick-band lines continuous
-// across tile boundaries.
+// Returns per-edge ray objects for each band variant.
+// thick=false → one variant; thick=true → [bplus (outer), bminus (inner)].
 function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) {
   const n = vertices.length
   const c = centroid(vertices)
 
-  // Build one array of edge-ray objects for a given per-edge delta function.
   const buildVariant = (deltaForEdge) => {
     const edges = []
     for (let i = 0; i < n; i++) {
@@ -87,9 +85,7 @@ function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) 
 
       const edgeTheta = thetaAt(mid[0], mid[1])
       const offset = deltaForEdge(edgeTheta) * edgeLen * 0.5
-      // oLeft is offset toward vertex[i] (shared corner with edge i-1)
-      // oRight is offset toward vertex[(i+1)%n] (shared corner with edge i+1)
-      const oLeft = sub2D(mid, scale2D(edgeDir, offset))
+      const oLeft  = sub2D(mid, scale2D(edgeDir, offset))
       const oRight = add2D(mid, scale2D(edgeDir, offset))
 
       edges.push({
@@ -107,7 +103,6 @@ function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) 
   ]
 }
 
-// Returns a copy of vertices guaranteed to be in clockwise order.
 function ensureClockwise(vertices) {
   let area = 0
   const n = vertices.length
@@ -116,26 +111,22 @@ function ensureClockwise(vertices) {
     const [bx, by] = vertices[(i + 1) % n]
     area += ax * by - bx * ay
   }
-  // area > 0 means CCW — reverse to make CW
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
-// Returns an array of t parameters (along segment a→b) for occlusion by segment c→d.
-// Normal case: one t where the lines cross (only if crossing is within c→d's extent).
-// Collinear case: two t values [t0, t1] bracketing the projected overlap of c→d onto a→b.
-// Returns [] when c→d neither crosses nor overlaps a→b.
-// t values are NOT clamped — caller clamps to [0,1].
+// Returns t-values on segment a→b where it is crossed by segment c→d.
+// Normal case: one t (crossing within c→d's extent).
+// Collinear case: two t values bracketing the overlap.
+// t is NOT clamped — caller clamps to [0,1].
 function bandCrossParam(a, b, c, d) {
   const dab = [b[0] - a[0], b[1] - a[1]]
   const dcd = [d[0] - c[0], d[1] - c[1]]
   const denom = cross2D(dab, dcd)
   if (Math.abs(denom) < 1e-10) {
-    // Parallel — check if collinear (perpendicular distance ≈ 0)
     const lenAB2 = dab[0] ** 2 + dab[1] ** 2
     if (lenAB2 < 1e-10) return []
     const perp = Math.abs(cross2D(sub2D(c, a), dab)) / Math.sqrt(lenAB2)
     if (perp > 1e-4) return []
-    // Collinear: project c and d onto a→b as t parameters and return the overlap interval
     const tc = dot2D(sub2D(c, a), dab) / lenAB2
     const td = dot2D(sub2D(d, a), dab) / lenAB2
     const t0 = Math.min(tc, td), t1 = Math.max(tc, td)
@@ -145,36 +136,43 @@ function bandCrossParam(a, b, c, d) {
   const diff = sub2D(c, a)
   const t = cross2D(diff, dcd) / denom
   const s = cross2D(diff, dab) / denom
-  if (s < -1e-4 || s > 1 + 1e-4) return []      // crossing is outside c→d's extent
-  return [t]                                       // t may be outside [0,1] — caller clamps
+  if (s < -1e-4 || s > 1 + 1e-4) return []
+  return [t]
 }
 
-// Pushes sub-segments of origin→end into segs, with the band gap [tGapStart, tGapEnd]
-// removed. extraGap (in world units) adds margin on each side.
-function pushWithBandGap(segs, origin, end, dir, tGapStart, tGapEnd, extraGap) {
-  const len = Math.sqrt((end[0] - origin[0]) ** 2 + (end[1] - origin[1]) ** 2)
-  const extra = len > 1e-8 ? extraGap / len : 0
-  const t0 = tGapStart - extra
-  const t1 = tGapEnd   + extra
-  const lerp = t => [origin[0] + t * (end[0] - origin[0]), origin[1] + t * (end[1] - origin[1])]
-  const fwd  = (a, b) => (b[0] - a[0]) * dir[0] + (b[1] - a[1]) * dir[1] > 1e-6
-
-  const gapStart = lerp(t0)
-  const gapEnd   = lerp(t1)
-  if (fwd(origin, gapStart)) segs.push([origin, gapStart])
-  if (fwd(gapEnd,  end))     segs.push([gapEnd, end])
+// Merges overlapping [a, b] intervals. Input need not be sorted.
+function mergeIntervals(intervals) {
+  if (intervals.length === 0) return []
+  intervals.sort((a, b) => a[0] - b[0])
+  const out = [[intervals[0][0], intervals[0][1]]]
+  for (let k = 1; k < intervals.length; k++) {
+    const last = out[out.length - 1]
+    if (intervals[k][0] <= last[1] + 1e-9) last[1] = Math.max(last[1], intervals[k][1])
+    else out.push([intervals[k][0], intervals[k][1]])
+  }
+  return out
 }
 
-// Builds a thetaAt(x, y) function for the given parquet settings.
-// Bounds are derived from all shape vertices so edge midpoints always fall
-// within the normalised [0, 1] range.
+// Pushes all visible sub-segments of origin→end after removing the (pre-merged) gap intervals.
+function pushWithGaps(list, origin, end, gapIntervals) {
+  const dx = end[0] - origin[0], dy = end[1] - origin[1]
+  if (dx * dx + dy * dy < 1e-12) return
+  const lerp = t => [origin[0] + t * dx, origin[1] + t * dy]
+  let prev = 0
+  for (const [a, b] of gapIntervals) {
+    const ac = Math.max(0, a), bc = Math.min(1, b)
+    if (ac > prev + 1e-6) list.push([lerp(prev), lerp(ac)])
+    if (bc > prev) prev = bc
+  }
+  if (prev < 1 - 1e-6) list.push([lerp(prev), lerp(1)])
+}
+
 function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed,
                       linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
   if (parquetDirection === 'none') return () => theta
 
   const lerp = w => thetaMin + Math.max(0, Math.min(1, w)) * (thetaMax - thetaMin)
 
-  // Collect spatial bounds from all vertices (covers the full canvas extent).
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, maxR = 0
   for (const shape of shapes) {
     const raw = shape[0]
@@ -193,7 +191,6 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   maxR = maxR || 1e-8
 
   if (parquetDirection === 'ltr') {
-    // Project vertices onto the gradient direction to find the extent, then normalise.
     const ca = Math.cos(linearAngle), sa = Math.sin(linearAngle)
     let minP = Infinity, maxP = -Infinity
     for (const shape of shapes) {
@@ -240,12 +237,9 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   return () => theta
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
   const allUnder = [], allOver = []
 
-  // Build a position→theta mapping. Edge midpoints are used as the sample point
-  // so that both tiles sharing an edge compute the same theta, giving seamless
-  // continuity across tile boundaries.
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
   for (let si = 0; si < shapes.length; si++) {
@@ -255,83 +249,151 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
     const n = vertices.length
 
+    // skip only activates for polygons with enough sides to avoid degenerate results
+    const effectiveSkip = n >= 6 ? skip : 0
+
     const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
-    const sp = allEdgeRays.map(edges =>
+
+    // Star point for each pair i (shared by all band variants of that pair)
+    const starPts = allEdgeRays.map(edges =>
       Array.from({ length: n }, (_, i) => {
-        const j = (i + 1) % n
+        const j = (i + 1 + effectiveSkip) % n
         const rayA = edges[i].left, rayB = edges[j].right
         const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
         const ptInside = pt && pointInPolygon(pt, vertices)
-        const end = ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-        return { endA: end, endB: end }
+        return ptInside
+          ? pt
+          : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
       })
     )
 
-    // Build per-band geometry. aSegs = A+ rays (left ray of edge i, origin on edge i).
-    // bSegs = B- rays (right ray of edge i+1, origin on edge i+1).
-    const bands = Array.from({ length: n }, (_, i) => {
-      const j = (i + 1) % n
-      const va = vertices[i], vb = vertices[j]
-      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-      const aSegs = [], bSegs = []
+    // One strand per pair i. Each strand owns 2 segs (non-thick) or 4 segs (thick):
+    // the A-side (left ray of edge i) and B-side (right ray of edge jPair) for each band.
+    const strands = Array.from({ length: n }, (_, i) => {
+      const jPair = (i + 1 + effectiveSkip) % n
+      const segs = []
       for (let di = 0; di < allEdgeRays.length; di++) {
-        const end = sp[di][i].endA
-        aSegs.push({ origin: allEdgeRays[di][i].left.origin,  dir: allEdgeRays[di][i].left.dir,  end })
-        bSegs.push({ origin: allEdgeRays[di][j].right.origin, dir: allEdgeRays[di][j].right.dir, end })
+        const end = starPts[di][i]
+        segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
+        segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
       }
-      return { aSegs, bSegs, edgeLen }
+      const va = vertices[i], vb = vertices[(i + 1) % n]
+      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
+      return { segs, edgeLen }
     })
 
-    // Draw each band clipped by band(i+1) (clockwise-next goes on top).
-    // A+ segments go from edge i toward M — they pass behind band(i+1) at their END,
-    // so draw from origin to the first crossing with band(i+1).
-    // B- segments go from edge i+1 toward M — they start behind band(i+1) (same edge),
-    // so draw from the last crossing with band(i+1) to M.
-    const lerpPt = (seg, t) => [
-      seg.origin[0] + t * (seg.end[0] - seg.origin[0]),
-      seg.origin[1] + t * (seg.end[1] - seg.origin[1]),
-    ]
-    const segLen = seg => Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
+    // No weave: push all segments flat
+    if (!overlap || !thick) {
+      for (const strand of strands) {
+        for (const seg of strand.segs) allOver.push([seg.origin, seg.end])
+      }
+      continue
+    }
 
+    // ── Weave rendering ────────────────────────────────────────────────────────
+
+    // Step 1: crossing adjacency — strands i and j are adjacent if any of their
+    // segments actually intersect inside both extents.
+    const adj = Array.from({ length: n }, () => [])
     for (let i = 0; i < n; i++) {
-      const { aSegs, bSegs, edgeLen } = bands[i]
-      const nextSegs = [...bands[(i + 1) % n].aSegs, ...bands[(i + 1) % n].bSegs]
-      const extraGap = overlapGap * edgeLen
+      for (let j = i + 1; j < n; j++) {
+        let found = false
+        outer: for (const sa of strands[i].segs) {
+          for (const sb of strands[j].segs) {
+            const ts = bandCrossParam(sa.origin, sa.end, sb.origin, sb.end)
+            if (ts.some(t => t > -1e-4 && t < 1 - 1e-6)) { found = true; break outer }
+          }
+        }
+        if (found) { adj[i].push(j); adj[j].push(i) }
+      }
+    }
 
-      const crossings = seg => nextSegs
-        .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
-        .map(t => Math.max(0, Math.min(1, t)))
-        .sort((a, b) => a - b)
+    // Step 2: BFS 2-coloring per connected component.
+    // colour 0 = over, colour 1 = under.
+    // Components start as colour 1 so their first neighbour becomes colour 0,
+    // matching the "left-ray (A) over right-ray (B)" convention at the first crossing.
+    // Odd-cycle components fall back to the A-over-B rule.
+    const colours  = new Array(n).fill(-1)
+    const fallback = new Array(n).fill(false)
 
-      const process = (segs, list) => {
-        for (const seg of segs) {
-          if (overlap && thick) {
-            const ts = crossings(seg)
-            if (ts.length > 0) {
-              const g = extraGap / segLen(seg)
-              const t0 = Math.max(0, ts[0] - g)
-              const t1 = Math.min(1, ts[ts.length - 1] + g)
-              if (t0 > 1e-6)       list.push([seg.origin, lerpPt(seg, t0)])
-              if (t1 < 1 - 1e-6)  list.push([lerpPt(seg, t1), seg.end])
-            } else {
-              list.push([seg.origin, seg.end])
-            }
-          } else {
-            list.push([seg.origin, seg.end])
+    for (let start = 0; start < n; start++) {
+      if (colours[start] !== -1) continue
+      colours[start] = 1
+      const queue     = [start]
+      const component = [start]
+      let conflict    = false
+
+      while (queue.length > 0) {
+        const cur = queue.shift()
+        for (const nb of adj[cur]) {
+          if (colours[nb] === -1) {
+            colours[nb] = 1 - colours[cur]
+            queue.push(nb)
+            component.push(nb)
+          } else if (colours[nb] === colours[cur]) {
+            conflict = true
           }
         }
       }
 
-      process(aSegs, allOver)
-      process(bSegs, allUnder)
+      if (conflict) {
+        // Odd cycle (e.g. triangles): fall back to A-segs over, B-segs under
+        for (const idx of component) fallback[idx] = true
+      }
+    }
+
+    // Which segments of strand i go to allOver / allUnder?
+    const overSegsOf  = i => fallback[i] ? strands[i].segs.filter(s => s.isA)
+                                         : colours[i] === 0 ? strands[i].segs : []
+    const underSegsOf = i => fallback[i] ? strands[i].segs.filter(s => !s.isA)
+                                         : colours[i] === 1 ? strands[i].segs : []
+
+    // Step 3: push over-segments whole
+    for (let i = 0; i < n; i++) {
+      for (const seg of overSegsOf(i)) allOver.push([seg.origin, seg.end])
+    }
+
+    // Step 4: push under-segments with individual per-crossing gaps.
+    // For each adjacent over-strand, one gap interval is cut per crossing
+    // (from first t to last t through that ribbon), then all intervals are merged.
+    // This ensures multiple crossings with different over-strands each get their
+    // own gap rather than being collapsed into one long blank span.
+    for (let i = 0; i < n; i++) {
+      const underS = underSegsOf(i)
+      if (underS.length === 0) continue
+      const { edgeLen } = strands[i]
+
+      // Cache over-segs for each adjacent strand that actually has any
+      const adjOverSegs = adj[i]
+        .map(j => overSegsOf(j))
+        .filter(segs => segs.length > 0)
+
+      for (const seg of underS) {
+        const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
+        const extraG = sl > 1e-8 ? (overlapGap * edgeLen) / sl : 0
+
+        const intervals = []
+        for (const overSegs of adjOverSegs) {
+          // Collect all t-values where this under-seg crosses this particular over-strand
+          const ts = overSegs
+            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
+            .map(t => Math.max(0, Math.min(1, t)))
+            .filter(t => t >= 0 && t < 1 - 1e-6)
+          if (ts.length === 0) continue
+          // One contiguous gap per over-strand (entry to exit through its ribbon)
+          intervals.push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+        }
+
+        pushWithGaps(allUnder, seg.origin, seg.end, mergeIntervals(intervals))
+      }
     }
   }
 
   return { underSegs: allUnder, overSegs: allOver }
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1) {
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
@@ -352,27 +414,25 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
+      const effectiveSkip = n >= 6 ? skip : 0
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
       for (let di = 0; di < allEdgeRays.length; di++) {
         const edges = allEdgeRays[di]
         for (let i = 0; i < n; i++) {
-          const j = (i + 1) % n
+          const j = (i + 1 + effectiveSkip) % n
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
           const ptInside = pt && pointInPolygon(pt, vertices)
           const end = ptInside ? pt : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-          const endA = end, endB = end
-          if (!endA || !endB) continue
+          if (!end) continue
 
           const hue = (i / n) * 360
-          const lightness = di === 0 ? 55 : 75
-          const color = `hsl(${hue}, 90%, ${lightness}%)`
-          ctx.strokeStyle = color
-          ctx.fillStyle = color
+          const color = `hsl(${hue}, 90%, ${di === 0 ? 55 : 75}%)`
+          ctx.strokeStyle = color; ctx.fillStyle = color
 
-          ctx.beginPath(); ctx.moveTo(rayA.origin[0], rayA.origin[1]); ctx.lineTo(endA[0], endA[1]); ctx.stroke()
-          ctx.beginPath(); ctx.moveTo(rayB.origin[0], rayB.origin[1]); ctx.lineTo(endB[0], endB[1]); ctx.stroke()
-          ctx.beginPath(); ctx.arc(endA[0], endA[1], r, 0, Math.PI * 2); ctx.fill()
+          ctx.beginPath(); ctx.moveTo(rayA.origin[0], rayA.origin[1]); ctx.lineTo(end[0], end[1]); ctx.stroke()
+          ctx.beginPath(); ctx.moveTo(rayB.origin[0], rayB.origin[1]); ctx.lineTo(end[0], end[1]); ctx.stroke()
+          ctx.beginPath(); ctx.arc(end[0], end[1], r, 0, Math.PI * 2); ctx.fill()
         }
       }
     }

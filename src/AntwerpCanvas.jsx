@@ -52,7 +52,7 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null, skip = 0 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -80,6 +80,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const ellipseMajorScaleRef = useRef(ellipseMajorScale)
   const ellipseMinorScaleRef = useRef(ellipseMinorScale)
   const onParquetParamChangeRef = useRef(onParquetParamChange)
+  const skipRef = useRef(skip)
   const boundsRef = useRef({ minX: -200, maxX: 200, minY: -200, maxY: 200, maxR: 200 })
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
@@ -208,7 +209,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
-        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current)
+        drawHankin(ctx, shapesRef.current, thetaRef.current, deltaRef.current, debugRef.current, thickRef.current, overlapRef.current, overlapGapRef.current, bandWidthRef.current, parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current, parquetFunctionRef.current, performance.now() / 1000, animSpeedRef.current, linearAngleRef.current, centerXRef.current, centerYRef.current, ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current, skipRef.current)
       }
     }
 
@@ -319,9 +320,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ellipseMajorScaleRef.current = ellipseMajorScale
     ellipseMinorScaleRef.current = ellipseMinorScale
     onParquetParamChangeRef.current = onParquetParamChange
+    skipRef.current = skip
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, skip, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -641,7 +643,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           parquetDirectionRef.current, thetaMinRef.current, thetaMaxRef.current,
           parquetFunctionRef.current, 0, 1,
           linearAngleRef.current, centerXRef.current, centerYRef.current,
-          ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current
+          ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current,
+          skipRef.current
         )
         const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
         const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
