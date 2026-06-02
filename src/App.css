@@ -5,128 +5,131 @@
   overflow: hidden;
 }
 
-/* Canvas fills entire viewport */
 .canvas-layer {
   position: absolute;
   inset: 0;
 }
 
-/* ── Collapsible shelf ───────────────────────────────────────────────────── */
+/* ── Drawer container ────────────────────────────────────────────────────── */
 
-.controls-shelf {
+.drawer {
   position: fixed;
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: min(1100px, 100vw);
+  width: min(460px, 100vw);
   z-index: 10;
+  background: rgba(8, 8, 24, 0.90);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
   display: flex;
   flex-direction: column;
 }
 
-.shelf-handle {
-  align-self: center;
+/* ── Collapsible panel ───────────────────────────────────────────────────── */
+
+.drawer-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer-panel.open {
+  grid-template-rows: 1fr;
+}
+
+.drawer-panel-inner {
+  min-height: 0;
+  overflow-y: auto;
+  max-height: clamp(200px, 52vh, 360px);
+  padding: 1rem 1.25rem 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.drawer-panel-inner::-webkit-scrollbar { width: 4px; }
+.drawer-panel-inner::-webkit-scrollbar-track { background: transparent; }
+.drawer-panel-inner::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
+
+.drawer-tabs {
   display: flex;
+  flex-shrink: 0;
+  height: 56px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.drawer-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 22px;
-  background: rgba(8, 8, 24, 0.80);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  color: rgba(255, 255, 255, 0.45);
+  gap: 3px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.30);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  font-size: 0.60rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  transition: color 0.15s, box-shadow 0.15s;
   padding: 0;
 }
 
-.shelf-handle:hover {
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(20, 20, 48, 0.90);
+.drawer-tab:hover {
+  color: rgba(255, 255, 255, 0.60);
 }
 
-.shelf-handle svg {
-  transition: transform 0.3s ease;
+.drawer-tab.active {
+  color: rgba(200, 200, 255, 0.95);
+  box-shadow: inset 0 2px 0 rgba(180, 170, 255, 0.65);
 }
 
-.shelf-handle svg.chevron-down {
-  transform: rotate(180deg);
+.drawer-tab span {
+  line-height: 1;
 }
 
-/* Smooth height collapse via grid rows */
-.shelf-body {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 0.3s ease;
-  background: rgba(8, 8, 24, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
-}
+/* ── Property rows ───────────────────────────────────────────────────────── */
 
-.shelf-body.collapsed {
-  grid-template-rows: 0fr;
-}
-
-.shelf-body-inner {
-  min-height: 0;
-  overflow: hidden;
+.prop-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem 0.1rem;
-  padding: 0.6rem 1rem;
+  gap: 0.75rem;
+  min-height: 36px;
+  padding: 2px 0;
 }
 
-/* ── Individual controls ─────────────────────────────────────────────────── */
+.prop-label {
+  width: 70px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.32);
+  font-size: 0.67rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
-.control-group {
+.prop-control {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0.6rem;
+  min-width: 0;
 }
 
-.control-group label {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  font-family: Georgia, serif;
-}
-
-/* Pattern dropdown */
-.control-group select {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.85);
-  padding: 0.35rem 0.6rem;
-  font-size: 0.82rem;
-  font-family: Georgia, serif;
-  cursor: pointer;
-  outline: none;
-  transition: border-color 0.15s;
-  max-width: 220px;
-}
-
-.control-group select:hover,
-.control-group select:focus { border-color: rgba(255, 255, 255, 0.3); }
-
-.control-group select option {
-  background: #0a0a1a;
-  color: #fff;
-}
-
-/* Range sliders */
-.control-group input[type="range"] {
-  width: 90px;
+.prop-control input[type="range"] {
+  width: 100%;
   height: 4px;
   accent-color: rgba(200, 200, 255, 0.85);
   cursor: pointer;
@@ -134,106 +137,154 @@
   flex-shrink: 0;
 }
 
-.slider-value {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.78rem;
-  font-family: Georgia, serif;
-  min-width: 3ch;
+.prop-value {
+  width: 44px;
+  flex-shrink: 0;
   text-align: right;
+  color: rgba(255, 255, 255, 0.50);
+  font-size: 0.75rem;
+  font-family: Georgia, serif;
   white-space: nowrap;
 }
 
-/* Vertical divider between groups */
-.shelf-divider {
-  width: 1px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 0 0.2rem;
+/* Sub-row: used for parquet sub-controls, band width, etc. */
+.prop-row-sub .prop-label {
+  color: rgba(255, 255, 255, 0.20);
+  padding-left: 10px;
+}
+
+/* Thin horizontal rule between sections */
+.prop-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 0.35rem 0 0.2rem;
+}
+
+/* Row that holds an action button (export, etc.) */
+.prop-row-action {
+  padding: 0.3rem 0;
+}
+
+/* ── Segmented control ───────────────────────────────────────────────────── */
+
+.seg-ctrl {
+  display: flex;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
   flex-shrink: 0;
 }
 
-/* Parquet icon toggle */
-.parquet-toggle {
-  display: flex;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.parquet-toggle button {
+.seg-ctrl button {
   flex: 1;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.45);
-  padding: 0.28rem 0.5rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.11);
+  color: rgba(255, 255, 255, 0.38);
+  padding: 0.28rem 0.55rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  font-size: 0.72rem;
+  font-family: Georgia, serif;
+  min-width: 30px;
+  transition: background 0.13s, color 0.13s;
+  white-space: nowrap;
 }
 
-.parquet-toggle button:last-child {
+.seg-ctrl button:last-child {
   border-right: none;
 }
 
-.parquet-toggle button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+.seg-ctrl button:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.75);
 }
 
-.parquet-toggle button.active {
-  background: rgba(200, 200, 255, 0.18);
+.seg-ctrl button.active {
+  background: rgba(180, 170, 255, 0.16);
   color: rgba(200, 200, 255, 0.95);
 }
 
-/* Function picker (parquet fn mode) */
-.parquet-fn-picker {
-  display: flex;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
+/* ── Toggle switch ───────────────────────────────────────────────────────── */
 
-.parquet-fn-picker button {
-  flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.45);
-  padding: 0.28rem 0.5rem;
+.toggle-switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.2s, border-color 0.2s;
+  padding: 0;
+  flex-shrink: 0;
 }
 
-.parquet-fn-picker button:last-child {
-  border-right: none;
+.toggle-switch.on {
+  background: rgba(120, 100, 255, 0.55);
+  border-color: rgba(190, 180, 255, 0.45);
 }
 
-.parquet-fn-picker button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.90);
+  border-radius: 50%;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
 }
 
-.parquet-fn-picker button.active {
-  background: rgba(200, 200, 255, 0.18);
-  color: rgba(200, 200, 255, 0.95);
+.toggle-switch.on .toggle-knob {
+  transform: translateX(18px);
 }
 
-/* Export button */
+/* ── Empty state hint ────────────────────────────────────────────────────── */
+
+.empty-hint {
+  color: rgba(255, 255, 255, 0.28);
+  font-size: 0.75rem;
+  font-family: Georgia, serif;
+  font-style: italic;
+  text-align: center;
+  padding: 1.5rem 0 1rem;
+  letter-spacing: 0.03em;
+}
+
+/* ── Action buttons (split, merge) ───────────────────────────────────────── */
+
+.action-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-family: Georgia, serif;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.13s, border-color 0.13s;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* ── Export button ───────────────────────────────────────────────────────── */
+
 .export-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 7px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.80);
   font-size: 0.72rem;
   font-family: Georgia, serif;
   letter-spacing: 0.06em;
-  padding: 0.3rem 0.75rem;
+  padding: 0.32rem 0.85rem;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s;
@@ -244,27 +295,27 @@
   border-color: rgba(255, 255, 255, 0.35);
 }
 
-/* Pattern picker button */
+/* ── Pattern picker button ───────────────────────────────────────────────── */
+
 .pattern-picker-btn {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  width: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.85);
-  padding: 0.35rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 0.38rem 0.65rem;
+  font-size: 0.80rem;
   font-family: Georgia, serif;
   cursor: pointer;
-  max-width: 220px;
   transition: border-color 0.15s, background 0.15s;
-  white-space: nowrap;
   overflow: hidden;
 }
 
 .pattern-picker-btn:hover {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.28);
   background: rgba(255, 255, 255, 0.09);
 }
 
@@ -274,6 +325,58 @@
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+  text-align: left;
+}
+
+/* ── Truchet vertex editor ───────────────────────────────────────────────── */
+
+.vertex-label {
+  font-style: italic;
+}
+
+.vertex-control {
+  gap: 0.4rem;
+}
+
+.suppress-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 0.67rem;
+  font-family: Georgia, serif;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.arc-range-input {
+  width: 52px !important;
+  height: 4px;
+  accent-color: rgba(200, 200, 255, 0.85);
+  cursor: pointer;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.arc-range-input:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+/* ── Debug toggle ────────────────────────────────────────────────────────── */
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: rgba(255, 255, 255, 0.22);
+  font-size: 0.65rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.5rem 0 0.25rem;
 }
 
 /* ── Tiling gallery overlay ──────────────────────────────────────────────── */
@@ -316,7 +419,7 @@
   color: rgba(255, 255, 255, 0.55);
   font-size: 0.72rem;
   font-family: Georgia, serif;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
 }
 
@@ -334,7 +437,7 @@
 }
 
 .gallery-close:hover {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.80);
 }
 
 .gallery-scroll {
@@ -342,13 +445,13 @@
   flex: 1;
   padding: 1rem 1.1rem 1.2rem;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.12) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 .gallery-scroll::-webkit-scrollbar { width: 5px; }
 .gallery-scroll::-webkit-scrollbar-track { background: transparent; }
 .gallery-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 3px;
 }
 
@@ -361,7 +464,7 @@
 }
 
 .gallery-group-label {
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.30);
   font-size: 0.65rem;
   font-family: Georgia, serif;
   letter-spacing: 0.12em;
@@ -407,7 +510,7 @@
 
 .gallery-item-label {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 0.6rem;
+  font-size: 0.60rem;
   font-family: Georgia, serif;
   text-align: center;
   line-height: 1.3;
@@ -421,74 +524,4 @@
 
 .gallery-item.selected .gallery-item-label {
   color: rgba(200, 200, 255, 0.85);
-}
-
-/* Debug toggle */
-.debug-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 0.68rem;
-  font-family: Georgia, serif;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  user-select: none;
-  padding: 0 0.4rem;
-}
-
-/* ── Truchet tile editor ─────────────────────────────────────────────────── */
-
-.rotate-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 7px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.76rem;
-  font-family: Georgia, serif;
-  padding: 0.28rem 0.6rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
-}
-.rotate-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.35);
-}
-
-.vertex-editor {
-  gap: 0.35rem;
-}
-
-.vertex-label {
-  color: rgba(200, 200, 255, 0.85);
-  font-size: 0.78rem;
-  font-family: Georgia, serif;
-  font-style: italic;
-  min-width: 1ch;
-}
-
-.suppress-label {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.68rem;
-  font-family: Georgia, serif;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.arc-range-input {
-  width: 60px;
-  height: 4px;
-  accent-color: rgba(200, 200, 255, 0.85);
-  cursor: pointer;
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.arc-range-input:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }

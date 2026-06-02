@@ -68,10 +68,10 @@ export default function App() {
   const [animSpeed, setAnimSpeed] = useState(1)
   const [thetaMinDeg, setThetaMinDeg] = useState(30)
   const [thetaMaxDeg, setThetaMaxDeg] = useState(60)
-  const [linearAngle, setLinearAngle] = useState(0)          // radians
-  const [parquetCenterX, setParquetCenterX] = useState(0)   // world coords
+  const [linearAngle, setLinearAngle] = useState(0)
+  const [parquetCenterX, setParquetCenterX] = useState(0)
   const [parquetCenterY, setParquetCenterY] = useState(0)
-  const [ellipseAngle, setEllipseAngle] = useState(0)         // radians
+  const [ellipseAngle, setEllipseAngle] = useState(0)
   const [ellipseMajorScale, setEllipseMajorScale] = useState(1.0)
   const [ellipseMinorScale, setEllipseMinorScale] = useState(1.0)
   const [radius, setRadius] = useState(0.15)
@@ -80,14 +80,18 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
-  const [shelfCollapsed, setShelfCollapsed] = useState(false)
+  const [activeTab, setActiveTab] = useState('motif')
   const [galleryOpen, setGalleryOpen] = useState(false)
-  const [selectedTileIdx, setSelectedTileIdx]   = useState(-1)
+  const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
 
   const isTruchet       = TILINGS[tilingIndex].config === 'truchet'
   const isSquareTruchet = TILINGS[tilingIndex].config === 'squareTruchet'
   const isAnyTruchet    = isTruchet || isSquareTruchet
+
+  function toggleTab(tab) {
+    setActiveTab(t => t === tab ? null : tab)
+  }
 
   function updateTileMeta(updates) {
     if (selectedTileIdx < 0) return
@@ -100,7 +104,6 @@ export default function App() {
     function handleKeyDown(e) {
       if (selectedTileIdx < 0 || !selectedTileMeta) return
 
-      // Rotate right (W)
       if (e.key === 'w' || e.key === 'W') {
         e.preventDefault()
         const newStartPt = (selectedTileMeta.startPt + 1) % 3
@@ -108,7 +111,6 @@ export default function App() {
         setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
         return
       }
-      // Rotate left (Q)
       if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         const newStartPt = (selectedTileMeta.startPt + 2) % 3
@@ -116,7 +118,6 @@ export default function App() {
         setSelectedTileMeta(prev => ({ ...prev, startPt: newStartPt }))
         return
       }
-      // Backspace — suppress all arcs on the selected tile
       if (e.key === 'Backspace') {
         e.preventDefault()
         const updates = { suppressA: true, suppressB: true, suppressC: true }
@@ -124,7 +125,6 @@ export default function App() {
         setSelectedTileMeta(prev => ({ ...prev, ...updates }))
         return
       }
-      // A/S/D — toggle arcs A, B, C individually
       const ARC_TOGGLE = { a: 'suppressA', s: 'suppressB', d: 'suppressC' }
       const arcKey = ARC_TOGGLE[e.key.toLowerCase()]
       if (arcKey) {
@@ -135,12 +135,9 @@ export default function App() {
         return
       }
 
-      // Arrow key navigation
       const DIRS = {
-        ArrowRight: [1, 0],
-        ArrowLeft:  [-1, 0],
-        ArrowDown:  [0, 1],
-        ArrowUp:    [0, -1],
+        ArrowRight: [1, 0], ArrowLeft: [-1, 0],
+        ArrowDown:  [0, 1], ArrowUp:   [0, -1],
       }
       const dir = DIRS[e.key]
       if (!dir) return
@@ -156,9 +153,6 @@ export default function App() {
       const cx = pts0.reduce((s, p) => s + p[0], 0) / n0
       const cy = pts0.reduce((s, p) => s + p[1], 0) / n0
 
-      // Pick the neighbor whose centroid is most "in the direction" of the arrow.
-      // Score = dot(to_candidate, dir) / dist² = cos(angle) / dist — favours
-      // nearby tiles that are closely aligned with the pressed direction.
       let bestIdx = -1
       let bestScore = -Infinity
       for (const [pts, meta] of shapes) {
@@ -172,10 +166,7 @@ export default function App() {
         const dot = dx * dir[0] + dy * dir[1]
         if (dot <= 0) continue
         const score = dot / (dx * dx + dy * dy)
-        if (score > bestScore) {
-          bestScore = score
-          bestIdx = meta._idx
-        }
+        if (score > bestScore) { bestScore = score; bestIdx = meta._idx }
       }
 
       if (bestIdx >= 0) {
@@ -192,6 +183,8 @@ export default function App() {
   useEffect(() => {
     setRadius(0.15)
   }, [tilingIndex])
+
+  const panelOpen = activeTab !== null
 
   return (
     <div className="app">
@@ -239,407 +232,416 @@ export default function App() {
         />
       </div>
 
-      <div className="controls-shelf">
-        <button className="shelf-handle" onClick={() => setShelfCollapsed(c => !c)}>
-          <svg
-            width="16" height="16" viewBox="0 0 16 16"
-            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className={shelfCollapsed ? '' : 'chevron-down'}
-          >
-            <polyline points="3,10 8,5 13,10"/>
-          </svg>
-        </button>
+      {/* ── 3-tab bottom drawer ── */}
+      <div className="drawer">
 
-        <div className={`shelf-body${shelfCollapsed ? ' collapsed' : ''}`}>
-          <div className="shelf-body-inner">
+        <div className={`drawer-panel${panelOpen ? ' open' : ''}`}>
+          <div className="drawer-panel-inner">
 
-            <div className="control-group">
-              <label>Pattern</label>
-              <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
-                <span className="pattern-picker-label">{TILINGS[tilingIndex].label.replace(/^\d+-Uniform:\s*/, '').replace(/^Quasi-periodic:\s*/, '').replace(/^Truchet:\s*/, '')}</span>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="2,4 5,7 8,4"/>
-                </svg>
-              </button>
-            </div>
-
-            <div className="control-group">
-              <label htmlFor="radius-slider">Radius</label>
-              <input
-                id="radius-slider"
-                type="range"
-                min={0.05} max={1} step={0.05}
-                value={radius}
-                onChange={e => setRadius(Number(e.target.value))}
-              />
-              <span className="slider-value">{Math.round(radius * 100)}%</span>
-            </div>
-
-            <div className="shelf-divider" />
-
-            <div className="control-group">
-              <label htmlFor="motif-check">Motif</label>
-              <input
-                id="motif-check"
-                type="checkbox"
-                checked={showMotif}
-                onChange={e => setShowMotif(e.target.checked)}
-              />
-            </div>
-
-            <div className="shelf-divider" />
-
-            {!isAnyTruchet && (
+            {/* ── TILING TAB ────────────────────────────────────────────── */}
+            {activeTab === 'tiling' && (
               <>
-            <div className="control-group">
-              <label>Parquet</label>
-              <div className="parquet-toggle">
-                <button
-                  className={parquetDirection === 'none' ? 'active' : ''}
-                  onClick={() => setParquetDirection('none')}
-                  title="Off"
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                    <line x1="4" y1="10" x2="16" y2="10"/>
-                  </svg>
-                </button>
-                <button
-                  className={parquetDirection === 'ltr' ? 'active' : ''}
-                  onClick={() => { setParquetDirection('ltr'); setLinearAngle(0) }}
-                  title="Linear gradient (drag direction handle on canvas)"
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="10" x2="15" y2="10"/><polyline points="13,8 15,10 13,12"/>
-                    <path d="M 6,6 A 6 6 0 0 1 14,6" strokeWidth="1.2" strokeDasharray="2,1.5"/>
-                    <path d="M 6,14 A 6 6 0 0 0 14,14" strokeWidth="1.2" strokeDasharray="2,1.5"/>
-                  </svg>
-                </button>
-                <button
-                  className={parquetDirection === 'centered' ? 'active' : ''}
-                  onClick={() => { setParquetDirection('centered'); setParquetCenterX(0); setParquetCenterY(0) }}
-                  title="Radial gradient (drag handles on canvas)"
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none"/>
-                    <line x1="10" y1="7" x2="10" y2="3"/><polyline points="8.5,4.5 10,3 11.5,4.5"/>
-                    <line x1="10" y1="13" x2="10" y2="17"/><polyline points="8.5,15.5 10,17 11.5,15.5"/>
-                    <line x1="13" y1="10" x2="17" y2="10"/><polyline points="15.5,8.5 17,10 15.5,11.5"/>
-                    <line x1="7" y1="10" x2="3" y2="10"/><polyline points="4.5,8.5 3,10 4.5,11.5"/>
-                  </svg>
-                </button>
-                <button
-                  className={parquetDirection === 'fn' ? 'active' : ''}
-                  onClick={() => setParquetDirection('fn')}
-                  title="Animated function"
-                >
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M 2,10 C 4,4 6,4 8,10 C 10,16 12,16 14,10 C 16,4 18,4 19,7"/>
-                    <circle cx="19" cy="7" r="1.2" fill="currentColor" stroke="none"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {parquetDirection === 'fn' && (
-              <div className="control-group">
-                <label>Shape</label>
-                <div className="parquet-fn-picker">
-                  <button
-                    className={parquetFunction === 'wave-ltr' ? 'active' : ''}
-                    onClick={() => setParquetFunction('wave-ltr')}
-                    title="Wave left to right"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M 1,10 C 3,4 5,4 7,10 C 9,16 11,16 13,10 C 15,4 17,4 19,10"/>
-                      <polyline points="16,8 19,10 16,12" strokeWidth="1.2"/>
-                    </svg>
-                  </button>
-                  <button
-                    className={parquetFunction === 'wave-btt' ? 'active' : ''}
-                    onClick={() => setParquetFunction('wave-btt')}
-                    title="Wave bottom to top"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M 10,19 C 4,17 4,15 10,13 C 16,11 16,9 10,7 C 4,5 4,3 10,1"/>
-                      <polyline points="8,4 10,1 12,4" strokeWidth="1.2"/>
-                    </svg>
-                  </button>
-                  <button
-                    className={parquetFunction === 'ripple' ? 'active' : ''}
-                    onClick={() => setParquetFunction('ripple')}
-                    title="Ripple from center"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <circle cx="10" cy="10" r="1.8" fill="currentColor" stroke="none"/>
-                      <circle cx="10" cy="10" r="4.5" opacity="0.7"/>
-                      <circle cx="10" cy="10" r="8" opacity="0.35"/>
-                    </svg>
-                  </button>
-                  <button
-                    className={parquetFunction === 'pulse' ? 'active' : ''}
-                    onClick={() => setParquetFunction('pulse')}
-                    title="Global pulse"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M 1,10 L 5,10 L 7,4 L 9,16 L 11,4 L 13,16 L 15,10 L 19,10"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {parquetDirection === 'ltr' && (
-              <div className="control-group">
-                <label htmlFor="linear-angle-slider">Direction</label>
-                <input
-                  id="linear-angle-slider"
-                  type="range"
-                  min={0} max={359} step={1}
-                  value={Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}
-                  onChange={e => setLinearAngle(Number(e.target.value) * Math.PI / 180)}
-                />
-                <span className="slider-value">{Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}°</span>
-              </div>
-            )}
-
-            {parquetDirection === 'centered' && (
-              <>
-                <div className="control-group">
-                  <label htmlFor="ellipse-angle-slider">Rotation</label>
-                  <input
-                    id="ellipse-angle-slider"
-                    type="range"
-                    min={0} max={179} step={1}
-                    value={Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}
-                    onChange={e => setEllipseAngle(Number(e.target.value) * Math.PI / 180)}
-                  />
-                  <span className="slider-value">{Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}°</span>
-                </div>
-                <div className="control-group">
-                  <label htmlFor="ellipse-major-slider">Major</label>
-                  <input
-                    id="ellipse-major-slider"
-                    type="range"
-                    min={0.1} max={5} step={0.05}
-                    value={ellipseMajorScale}
-                    onChange={e => setEllipseMajorScale(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{ellipseMajorScale.toFixed(2)}×</span>
-                </div>
-                <div className="control-group">
-                  <label htmlFor="ellipse-minor-slider">Minor</label>
-                  <input
-                    id="ellipse-minor-slider"
-                    type="range"
-                    min={0.1} max={5} step={0.05}
-                    value={ellipseMinorScale}
-                    onChange={e => setEllipseMinorScale(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{ellipseMinorScale.toFixed(2)}×</span>
-                </div>
-              </>
-            )}
-
-            {parquetDirection === 'fn' && (
-              <div className="control-group">
-                <label htmlFor="anim-speed-slider">Speed</label>
-                <input
-                  id="anim-speed-slider"
-                  type="range"
-                  min={0} max={4} step={0.1}
-                  value={animSpeed}
-                  onChange={e => setAnimSpeed(Number(e.target.value))}
-                />
-                <span className="slider-value">{animSpeed.toFixed(1)}×</span>
-              </div>
-            )}
-
-            {parquetDirection === 'none' ? (
-              <div className="control-group">
-                <label htmlFor="theta-slider">Angle</label>
-                <input
-                  id="theta-slider"
-                  type="range"
-                  min={10} max={80} step={1}
-                  value={thetaDeg}
-                  onChange={e => setThetaDeg(Number(e.target.value))}
-                />
-                <span className="slider-value">{thetaDeg}°</span>
-              </div>
-            ) : (
-              <>
-                <div className="control-group">
-                  <label htmlFor="theta-min-slider">Min</label>
-                  <input
-                    id="theta-min-slider"
-                    type="range"
-                    min={10} max={80} step={1}
-                    value={thetaMinDeg}
-                    onChange={e => setThetaMinDeg(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{thetaMinDeg}°</span>
-                </div>
-                <div className="control-group">
-                  <label htmlFor="theta-max-slider">Max</label>
-                  <input
-                    id="theta-max-slider"
-                    type="range"
-                    min={10} max={80} step={1}
-                    value={thetaMaxDeg}
-                    onChange={e => setThetaMaxDeg(Number(e.target.value))}
-                  />
-                  <span className="slider-value">{thetaMaxDeg}°</span>
-                </div>
-              </>
-            )}
-              </>
-            )}
-
-            <div className="shelf-divider" />
-
-            {!isAnyTruchet && (
-              <>
-            <div className="control-group">
-              <label htmlFor="delta-slider">Delta</label>
-              <input
-                id="delta-slider"
-                type="range"
-                min={0} max={0.9} step={0.01}
-                value={delta}
-                onChange={e => setDelta(Number(e.target.value))}
-              />
-              <span className="slider-value">{delta.toFixed(2)}</span>
-            </div>
-
-            <div className="control-group">
-              <label htmlFor="skip-slider">Skip</label>
-              <input
-                id="skip-slider"
-                type="range"
-                min={0} max={3} step={1}
-                value={skip}
-                onChange={e => setSkip(Number(e.target.value))}
-              />
-              <span className="slider-value">{skip}</span>
-            </div>
-
-            <div className="control-group">
-              <label htmlFor="thick-check">Thick</label>
-              <input
-                id="thick-check"
-                type="checkbox"
-                checked={thick}
-                onChange={e => setThick(e.target.checked)}
-              />
-            </div>
-
-            {thick && (
-              <div className="control-group">
-                <label htmlFor="bandwidth-slider">Width</label>
-                <input
-                  id="bandwidth-slider"
-                  type="range"
-                  min={0.01} max={0.5} step={0.01}
-                  value={bandWidth}
-                  onChange={e => setBandWidth(Number(e.target.value))}
-                />
-                <span className="slider-value">{bandWidth.toFixed(2)}</span>
-              </div>
-            )}
-
-            <div className="shelf-divider" />
-              </>
-            )}
-
-            {isAnyTruchet && selectedTileMeta && (() => {
-              const nVerts      = isSquareTruchet ? 4 : 3
-              const vertColors  = isSquareTruchet ? SQUARE_VERTEX_COLORS : VERTEX_COLORS
-              const aCount      = (selectedTileMeta.arcCount ?? 15) - 2
-              const vertexLabels = ['A', 'B', 'C', ...(isSquareTruchet ? ['D'] : [])]
-              return (
-                <>
-                  <div className="control-group">
-                    <label>Tile</label>
-                    <button className="rotate-btn" onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 1) % nVerts })}>
-                      ↻ Rotate
+                <div className="prop-row">
+                  <span className="prop-label">Pattern</span>
+                  <div className="prop-control">
+                    <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
+                      <span className="pattern-picker-label">
+                        {TILINGS[tilingIndex].label
+                          .replace(/^\d+-Uniform:\s*/, '')
+                          .replace(/^Quasi-periodic:\s*/, '')
+                          .replace(/^Truchet:\s*/, '')}
+                      </span>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
+                        strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="2,4 5,7 8,4"/>
+                      </svg>
                     </button>
                   </div>
-                  {(selectedTileMeta.size === 'large' || selectedTileMeta.size === 'medium') && (
-                    <div className="control-group">
-                      <label>Split</label>
-                      <button className="rotate-btn" onClick={() => {
-                        canvasRef.current?.subdivideTile(selectedTileIdx)
-                        setSelectedTileIdx(-1)
-                        setSelectedTileMeta(null)
-                      }}>
-                        ⊞ {selectedTileMeta.size === 'large' ? '→ Medium' : '→ Small'}
-                      </button>
-                    </div>
-                  )}
-                  {(selectedTileMeta.size === 'medium' || selectedTileMeta.size === 'small') &&
-                    canvasRef.current?.canMergeTile(selectedTileIdx) && (
-                    <div className="control-group">
-                      <label>Merge</label>
-                      <button className="rotate-btn" onClick={() => {
-                        const newIdx = canvasRef.current?.mergeTile(selectedTileIdx)
-                        if (newIdx >= 0) {
-                          const meta = canvasRef.current?.getTileMeta(newIdx)
-                          setSelectedTileIdx(newIdx)
-                          setSelectedTileMeta(meta)
-                        } else {
-                          setSelectedTileIdx(-1)
-                          setSelectedTileMeta(null)
-                        }
-                      }}>
-                        ⊟ {selectedTileMeta.size === 'medium' ? '→ Large' : '→ Medium'}
-                      </button>
-                    </div>
-                  )}
-                  {vertexLabels.map((v, i) => {
-                    const sk = `suppress${v}`
-                    const rk = `arcRange${v}`
-                    const suppressed = !!selectedTileMeta[sk]
-                    const defaultMax = v === 'D' ? Math.min(2, aCount)
-                                     : v === 'C' && !isSquareTruchet ? Math.min(3, aCount)
-                                     : aCount
-                    const range = selectedTileMeta[rk] ?? [1, defaultMax]
-                    return (
-                      <div key={v} className="control-group vertex-editor">
-                        <span className="vertex-label" style={{ color: vertColors[i] }}>{v}</span>
-                        <label className="suppress-label">
-                          <input type="checkbox" checked={suppressed}
-                            onChange={e => updateTileMeta({ [sk]: e.target.checked })} />
-                          off
-                        </label>
-                        <input type="range" min={1} max={Math.max(1, range[1])} value={range[0]}
-                          disabled={suppressed}
-                          className="arc-range-input"
-                          onChange={e => updateTileMeta({ [rk]: [Number(e.target.value), range[1]] })} />
-                        <input type="range" min={Math.min(range[0], aCount)} max={aCount} value={range[1]}
-                          disabled={suppressed}
-                          className="arc-range-input"
-                          onChange={e => updateTileMeta({ [rk]: [range[0], Number(e.target.value)] })} />
-                        <span className="slider-value">{range[0]}–{range[1]}</span>
+                </div>
+
+                <div className="prop-row">
+                  <span className="prop-label">Scale</span>
+                  <div className="prop-control">
+                    <input id="radius-slider" type="range" min={0.05} max={1} step={0.05}
+                      value={radius} onChange={e => setRadius(Number(e.target.value))} />
+                  </div>
+                  <span className="prop-value">{Math.round(radius * 100)}%</span>
+                </div>
+              </>
+            )}
+
+            {/* ── MOTIF TAB ─────────────────────────────────────────────── */}
+            {activeTab === 'motif' && (
+              isAnyTruchet ? (
+                selectedTileMeta ? (() => {
+                  const nVerts     = isSquareTruchet ? 4 : 3
+                  const vertColors = isSquareTruchet ? SQUARE_VERTEX_COLORS : VERTEX_COLORS
+                  const aCount     = (selectedTileMeta.arcCount ?? 15) - 2
+                  const vertexLabels = ['A', 'B', 'C', ...(isSquareTruchet ? ['D'] : [])]
+                  return (
+                    <>
+                      <div className="prop-row">
+                        <span className="prop-label">Rotate</span>
+                        <div className="prop-control">
+                          <div className="seg-ctrl">
+                            <button onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 2) % nVerts })}>↺</button>
+                            <button onClick={() => updateTileMeta({ startPt: (selectedTileMeta.startPt + 1) % nVerts })}>↻</button>
+                          </div>
+                        </div>
                       </div>
-                    )
-                  })}
-                  <div className="shelf-divider" />
+
+                      {(selectedTileMeta.size === 'large' || selectedTileMeta.size === 'medium') && (
+                        <div className="prop-row">
+                          <span className="prop-label">Split</span>
+                          <div className="prop-control">
+                            <button className="action-btn" onClick={() => {
+                              canvasRef.current?.subdivideTile(selectedTileIdx)
+                              setSelectedTileIdx(-1)
+                              setSelectedTileMeta(null)
+                            }}>
+                              {selectedTileMeta.size === 'large' ? '→ Medium' : '→ Small'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(selectedTileMeta.size === 'medium' || selectedTileMeta.size === 'small') &&
+                        canvasRef.current?.canMergeTile(selectedTileIdx) && (
+                        <div className="prop-row">
+                          <span className="prop-label">Merge</span>
+                          <div className="prop-control">
+                            <button className="action-btn" onClick={() => {
+                              const newIdx = canvasRef.current?.mergeTile(selectedTileIdx)
+                              if (newIdx >= 0) {
+                                const meta = canvasRef.current?.getTileMeta(newIdx)
+                                setSelectedTileIdx(newIdx)
+                                setSelectedTileMeta(meta)
+                              } else {
+                                setSelectedTileIdx(-1)
+                                setSelectedTileMeta(null)
+                              }
+                            }}>
+                              {selectedTileMeta.size === 'medium' ? '→ Large' : '→ Medium'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="prop-section" />
+
+                      {vertexLabels.map((v, i) => {
+                        const sk = `suppress${v}`
+                        const rk = `arcRange${v}`
+                        const suppressed = !!selectedTileMeta[sk]
+                        const defaultMax = v === 'D' ? Math.min(2, aCount)
+                                         : v === 'C' && !isSquareTruchet ? Math.min(3, aCount)
+                                         : aCount
+                        const range = selectedTileMeta[rk] ?? [1, defaultMax]
+                        return (
+                          <div key={v} className="prop-row">
+                            <span className="prop-label vertex-label" style={{ color: vertColors[i] }}>{v}</span>
+                            <div className="prop-control vertex-control">
+                              <label className="suppress-label">
+                                <input type="checkbox" checked={suppressed}
+                                  onChange={e => updateTileMeta({ [sk]: e.target.checked })} />
+                                off
+                              </label>
+                              <input type="range" min={1} max={Math.max(1, range[1])} value={range[0]}
+                                disabled={suppressed} className="arc-range-input"
+                                onChange={e => updateTileMeta({ [rk]: [Number(e.target.value), range[1]] })} />
+                              <input type="range" min={Math.min(range[0], aCount)} max={aCount} value={range[1]}
+                                disabled={suppressed} className="arc-range-input"
+                                onChange={e => updateTileMeta({ [rk]: [range[0], Number(e.target.value)] })} />
+                            </div>
+                            <span className="prop-value">{range[0]}–{range[1]}</span>
+                          </div>
+                        )
+                      })}
+                    </>
+                  )
+                })() : (
+                  <div className="empty-hint">Tap a tile on the canvas to edit it</div>
+                )
+              ) : (
+                <>
+                  <div className="prop-row">
+                    <span className="prop-label">Visible</span>
+                    <div className="prop-control">
+                      <button
+                        className={`toggle-switch${showMotif ? ' on' : ''}`}
+                        onClick={() => setShowMotif(v => !v)}
+                        aria-label="Toggle motif"
+                      >
+                        <span className="toggle-knob" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="prop-section" />
+
+                  {parquetDirection === 'none' ? (
+                    <div className="prop-row">
+                      <span className="prop-label">Angle</span>
+                      <div className="prop-control">
+                        <input id="theta-slider" type="range" min={10} max={80} step={1}
+                          value={thetaDeg} onChange={e => setThetaDeg(Number(e.target.value))} />
+                      </div>
+                      <span className="prop-value">{thetaDeg}°</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="prop-row">
+                        <span className="prop-label">Min θ</span>
+                        <div className="prop-control">
+                          <input id="theta-min-slider" type="range" min={10} max={80} step={1}
+                            value={thetaMinDeg} onChange={e => setThetaMinDeg(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{thetaMinDeg}°</span>
+                      </div>
+                      <div className="prop-row">
+                        <span className="prop-label">Max θ</span>
+                        <div className="prop-control">
+                          <input id="theta-max-slider" type="range" min={10} max={80} step={1}
+                            value={thetaMaxDeg} onChange={e => setThetaMaxDeg(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{thetaMaxDeg}°</span>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="prop-row">
+                    <span className="prop-label">Variation</span>
+                    <div className="prop-control">
+                      <div className="seg-ctrl">
+                        <button className={parquetDirection === 'none' ? 'active' : ''}
+                          onClick={() => setParquetDirection('none')} title="Off">
+                          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                            <line x1="4" y1="10" x2="16" y2="10"/>
+                          </svg>
+                        </button>
+                        <button className={parquetDirection === 'ltr' ? 'active' : ''}
+                          onClick={() => { setParquetDirection('ltr'); setLinearAngle(0) }} title="Linear gradient">
+                          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="3" y1="10" x2="15" y2="10"/><polyline points="13,8 15,10 13,12"/>
+                            <path d="M 6,6 A 6 6 0 0 1 14,6" strokeWidth="1.2" strokeDasharray="2,1.5"/>
+                            <path d="M 6,14 A 6 6 0 0 0 14,14" strokeWidth="1.2" strokeDasharray="2,1.5"/>
+                          </svg>
+                        </button>
+                        <button className={parquetDirection === 'centered' ? 'active' : ''}
+                          onClick={() => { setParquetDirection('centered'); setParquetCenterX(0); setParquetCenterY(0) }} title="Radial">
+                          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="10" cy="10" r="2" fill="currentColor" stroke="none"/>
+                            <line x1="10" y1="7" x2="10" y2="3"/><polyline points="8.5,4.5 10,3 11.5,4.5"/>
+                            <line x1="10" y1="13" x2="10" y2="17"/><polyline points="8.5,15.5 10,17 11.5,15.5"/>
+                            <line x1="13" y1="10" x2="17" y2="10"/><polyline points="15.5,8.5 17,10 15.5,11.5"/>
+                            <line x1="7" y1="10" x2="3" y2="10"/><polyline points="4.5,8.5 3,10 4.5,11.5"/>
+                          </svg>
+                        </button>
+                        <button className={parquetDirection === 'fn' ? 'active' : ''}
+                          onClick={() => setParquetDirection('fn')} title="Animated">
+                          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M 2,10 C 4,4 6,4 8,10 C 10,16 12,16 14,10 C 16,4 18,4 19,7"/>
+                            <circle cx="19" cy="7" r="1.2" fill="currentColor" stroke="none"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {parquetDirection === 'ltr' && (
+                    <div className="prop-row prop-row-sub">
+                      <span className="prop-label">Direction</span>
+                      <div className="prop-control">
+                        <input id="linear-angle-slider" type="range" min={0} max={359} step={1}
+                          value={Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}
+                          onChange={e => setLinearAngle(Number(e.target.value) * Math.PI / 180)} />
+                      </div>
+                      <span className="prop-value">{Math.round(((linearAngle * 180 / Math.PI) % 360 + 360) % 360)}°</span>
+                    </div>
+                  )}
+
+                  {parquetDirection === 'centered' && (
+                    <>
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Rotation</span>
+                        <div className="prop-control">
+                          <input id="ellipse-angle-slider" type="range" min={0} max={179} step={1}
+                            value={Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}
+                            onChange={e => setEllipseAngle(Number(e.target.value) * Math.PI / 180)} />
+                        </div>
+                        <span className="prop-value">{Math.round(((ellipseAngle * 180 / Math.PI) % 180 + 180) % 180)}°</span>
+                      </div>
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Major</span>
+                        <div className="prop-control">
+                          <input id="ellipse-major-slider" type="range" min={0.1} max={5} step={0.05}
+                            value={ellipseMajorScale} onChange={e => setEllipseMajorScale(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{ellipseMajorScale.toFixed(2)}×</span>
+                      </div>
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Minor</span>
+                        <div className="prop-control">
+                          <input id="ellipse-minor-slider" type="range" min={0.1} max={5} step={0.05}
+                            value={ellipseMinorScale} onChange={e => setEllipseMinorScale(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{ellipseMinorScale.toFixed(2)}×</span>
+                      </div>
+                    </>
+                  )}
+
+                  {parquetDirection === 'fn' && (
+                    <>
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Shape</span>
+                        <div className="prop-control">
+                          <div className="seg-ctrl">
+                            <button className={parquetFunction === 'wave-ltr' ? 'active' : ''}
+                              onClick={() => setParquetFunction('wave-ltr')} title="Wave left to right">
+                              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M 1,10 C 3,4 5,4 7,10 C 9,16 11,16 13,10 C 15,4 17,4 19,10"/>
+                                <polyline points="16,8 19,10 16,12" strokeWidth="1.2"/>
+                              </svg>
+                            </button>
+                            <button className={parquetFunction === 'wave-btt' ? 'active' : ''}
+                              onClick={() => setParquetFunction('wave-btt')} title="Wave bottom to top">
+                              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M 10,19 C 4,17 4,15 10,13 C 16,11 16,9 10,7 C 4,5 4,3 10,1"/>
+                                <polyline points="8,4 10,1 12,4" strokeWidth="1.2"/>
+                              </svg>
+                            </button>
+                            <button className={parquetFunction === 'ripple' ? 'active' : ''}
+                              onClick={() => setParquetFunction('ripple')} title="Ripple">
+                              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                                <circle cx="10" cy="10" r="1.8" fill="currentColor" stroke="none"/>
+                                <circle cx="10" cy="10" r="4.5" opacity="0.7"/>
+                                <circle cx="10" cy="10" r="8" opacity="0.35"/>
+                              </svg>
+                            </button>
+                            <button className={parquetFunction === 'pulse' ? 'active' : ''}
+                              onClick={() => setParquetFunction('pulse')} title="Pulse">
+                              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M 1,10 L 5,10 L 7,4 L 9,16 L 11,4 L 13,16 L 15,10 L 19,10"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Speed</span>
+                        <div className="prop-control">
+                          <input id="anim-speed-slider" type="range" min={0} max={4} step={0.1}
+                            value={animSpeed} onChange={e => setAnimSpeed(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{animSpeed.toFixed(1)}×</span>
+                      </div>
+                    </>
+                  )}
                 </>
               )
-            })()}
+            )}
 
-            <div className="control-group">
-              <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
-                Export SVG
-              </button>
-            </div>
+            {/* ── STYLE TAB ─────────────────────────────────────────────── */}
+            {activeTab === 'style' && (
+              <>
+                {!isAnyTruchet && (
+                  <>
+                    <div className="prop-row">
+                      <span className="prop-label">Inset</span>
+                      <div className="prop-control">
+                        <input id="delta-slider" type="range" min={0} max={0.9} step={0.01}
+                          value={delta} onChange={e => setDelta(Number(e.target.value))} />
+                      </div>
+                      <span className="prop-value">{delta.toFixed(2)}</span>
+                    </div>
 
-            <label className="debug-toggle">
-              <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
-              debug
-            </label>
+                    <div className="prop-row">
+                      <span className="prop-label">Density</span>
+                      <div className="prop-control">
+                        <div className="seg-ctrl">
+                          {[0, 1, 2, 3].map(v => (
+                            <button key={v} className={skip === v ? 'active' : ''}
+                              onClick={() => setSkip(v)}>{v}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="prop-row">
+                      <span className="prop-label">Band</span>
+                      <div className="prop-control">
+                        <div className="seg-ctrl">
+                          <button className={!thick ? 'active' : ''} onClick={() => setThick(false)}>Thin</button>
+                          <button className={thick ? 'active' : ''} onClick={() => setThick(true)}>Thick</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {thick && (
+                      <div className="prop-row prop-row-sub">
+                        <span className="prop-label">Width</span>
+                        <div className="prop-control">
+                          <input id="bandwidth-slider" type="range" min={0.01} max={0.5} step={0.01}
+                            value={bandWidth} onChange={e => setBandWidth(Number(e.target.value))} />
+                        </div>
+                        <span className="prop-value">{bandWidth.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    <div className="prop-section" />
+                  </>
+                )}
+
+                <div className="prop-row prop-row-action">
+                  <button className="export-btn" onClick={() => canvasRef.current?.exportSVG()}>
+                    Export SVG
+                  </button>
+                </div>
+
+                <label className="debug-toggle">
+                  <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
+                  debug
+                </label>
+              </>
+            )}
 
           </div>
+        </div>
+
+        {/* Always-visible tab bar */}
+        <div className="drawer-tabs">
+          <button className={`drawer-tab${activeTab === 'tiling' ? ' active' : ''}`}
+            onClick={() => toggleTab('tiling')}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+              strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="7" height="7" rx="1.5"/>
+              <rect x="11" y="2" width="7" height="7" rx="1.5"/>
+              <rect x="2" y="11" width="7" height="7" rx="1.5"/>
+              <rect x="11" y="11" width="7" height="7" rx="1.5"/>
+            </svg>
+            <span>Tiling</span>
+          </button>
+          <button className={`drawer-tab${activeTab === 'motif' ? ' active' : ''}`}
+            onClick={() => toggleTab('motif')}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+              strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 3 L11.8 8.2 L17.5 7 L13.2 10.5 L15.9 16 L10 12.8 L4.1 16 L6.8 10.5 L2.5 7 L8.2 8.2 Z"/>
+            </svg>
+            <span>Motif</span>
+          </button>
+          <button className={`drawer-tab${activeTab === 'style' ? ' active' : ''}`}
+            onClick={() => toggleTab('style')}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+              strokeWidth="1.4" strokeLinecap="round">
+              <line x1="3" y1="6" x2="17" y2="6"/>
+              <line x1="3" y1="11" x2="17" y2="11"/>
+              <line x1="3" y1="16" x2="17" y2="16"/>
+              <circle cx="7"  cy="6"  r="2.2" fill="currentColor" stroke="none"/>
+              <circle cx="13" cy="11" r="2.2" fill="currentColor" stroke="none"/>
+              <circle cx="8"  cy="16" r="2.2" fill="currentColor" stroke="none"/>
+            </svg>
+            <span>Style</span>
+          </button>
         </div>
       </div>
 
