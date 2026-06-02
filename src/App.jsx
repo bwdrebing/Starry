@@ -74,7 +74,7 @@ export default function App() {
   const [ellipseAngle, setEllipseAngle] = useState(0)         // radians
   const [ellipseMajorScale, setEllipseMajorScale] = useState(1.0)
   const [ellipseMinorScale, setEllipseMinorScale] = useState(1.0)
-  const [radius, setRadius] = useState(1)
+  const [radius, setRadius] = useState(0.15)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
   const [thick, setThick] = useState(false)
@@ -188,6 +188,10 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isTruchet, selectedTileIdx, selectedTileMeta])
+
+  useEffect(() => {
+    setRadius(0.15)
+  }, [tilingIndex])
 
   return (
     <div className="app">
