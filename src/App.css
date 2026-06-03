@@ -492,3 +492,110 @@
   opacity: 0.3;
   cursor: not-allowed;
 }
+
+/* ── Export Regions modal ────────────────────────────────────────────────── */
+
+.regions-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(4, 4, 16, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.regions-panel {
+  background: rgba(10, 10, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 14px;
+  width: min(640px, 100%);
+  max-height: min(680px, 90vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.regions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.regions-title {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.regions-subtitle {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.70rem;
+  font-family: Georgia, serif;
+  letter-spacing: 0.05em;
+  padding: 0.55rem 1.1rem 0.2rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.regions-empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.76rem;
+  font-family: Georgia, serif;
+  padding: 1.5rem 1.1rem;
+  margin: 0;
+  text-align: center;
+}
+
+.regions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+
+.regions-grid::-webkit-scrollbar { width: 5px; }
+.regions-grid::-webkit-scrollbar-track { background: transparent; }
+.regions-grid::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 3px;
+}
+
+.region-cell {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+.region-cell svg {
+  width: 100%;
+  height: 100%;
+}
+
+.regions-footer {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
