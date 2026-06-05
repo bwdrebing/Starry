@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run screenshot tests before every commit.
+# Tests build the app and take ~60s — use `git commit --no-verify` to skip.
+npm test

@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:update": "playwright test --update-snapshots",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@hhogg/antwerp": "^3.0.6",
@@ -14,6 +17,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.2.0"
   }
