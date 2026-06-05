@@ -7,10 +7,21 @@ async function waitForRender(page) {
   await page.locator(`${CANVAS}[data-rendered]`).waitFor({ timeout: 10_000 })
 }
 
-// Extract the raw canvas bitmap as a PNG buffer.
-// This captures only the canvas drawing buffer (no compositing with StarryCanvas).
+// Extract the canvas bitmap composited onto a black background as a PNG buffer.
+// Black background makes the light-colored motif lines clearly visible in snapshots.
+// Using toDataURL() rather than a page screenshot avoids the animated StarryCanvas
+// background bleeding through.
 async function canvasSnapshot(page) {
-  const dataURL = await page.locator(CANVAS).evaluate(el => el.toDataURL('image/png'))
+  const dataURL = await page.locator(CANVAS).evaluate(el => {
+    const offscreen = document.createElement('canvas')
+    offscreen.width = el.width
+    offscreen.height = el.height
+    const ctx = offscreen.getContext('2d')
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, offscreen.width, offscreen.height)
+    ctx.drawImage(el, 0, 0)
+    return offscreen.toDataURL('image/png')
+  })
   return Buffer.from(dataURL.split(',')[1], 'base64')
 }
 
