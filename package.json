@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "playwright test",
-    "test:update": "playwright test --update-snapshots"
+    "test:update": "playwright test --update-snapshots",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@hhogg/antwerp": "^3.0.6",
