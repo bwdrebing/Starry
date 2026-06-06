@@ -29,46 +29,30 @@
   flex-direction: column;
 }
 
-/* ── Drag handle ─────────────────────────────────────────────────────────── */
-
-.drawer-handle {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 20px;
-  cursor: ns-resize;
-  touch-action: none;
-  flex-shrink: 0;
-  padding: 6px 0;
-}
-
-.drawer-handle-pill {
-  width: 36px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 2px;
-  transition: background 0.15s;
-  pointer-events: none;
-}
-
-.drawer-handle:hover .drawer-handle-pill {
-  background: rgba(255, 255, 255, 0.40);
-}
-
 /* ── Collapsible panel ───────────────────────────────────────────────────── */
 
 .drawer-panel {
-  flex-shrink: 0;
-  overflow: hidden;
-  transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer-panel.open {
+  grid-template-rows: 1fr;
 }
 
 .drawer-panel-inner {
-  height: 100%;
+  min-height: 0;
   overflow-y: auto;
+  max-height: 220px;
+  transition: max-height 0.38s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 1rem 1.25rem 0.5rem;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.drawer-panel-inner.tiling-expanded {
+  max-height: 460px;
 }
 
 .drawer-panel-inner::-webkit-scrollbar { width: 4px; }
