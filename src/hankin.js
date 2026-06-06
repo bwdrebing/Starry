@@ -616,34 +616,79 @@ function drawGlassPane(ctx, pts, colorIdx, lightDx, lightDy, sc) {
 
   // Base glass colour
   trace()
-  ctx.fillStyle = glassRgba(colorIdx, 0.82)
+  ctx.fillStyle = glassRgba(colorIdx, 0.78)
   ctx.fill()
 
-  // Refraction gradient — bright toward light source, dark opposite, simulates
-  // directional light bending through the glass thickness.
+  // Chromatic dispersion — different wavelengths bend by different amounts through
+  // the glass, producing a warm (red/orange) tint on the lit side and a cool
+  // (blue/cyan) tint on the shadow side.  This is the most distinctive visible
+  // signature of light refracting through a coloured medium.
+  const dispGrad = ctx.createLinearGradient(
+    cx + lightDx * maxR, cy + lightDy * maxR,   // lit side
+    cx - lightDx * maxR, cy - lightDy * maxR    // shadow side
+  )
+  dispGrad.addColorStop(0,    'rgba(255,150, 40, 0.28)')   // warm orange — lit
+  dispGrad.addColorStop(0.42, 'rgba(255,255,255, 0.04)')
+  dispGrad.addColorStop(0.58, 'rgba(255,255,255, 0.04)')
+  dispGrad.addColorStop(1,    'rgba( 40, 90, 255, 0.22)')  // cool blue  — shadow
+  trace()
+  ctx.fillStyle = dispGrad
+  ctx.fill()
+
+  // Refraction depth gradient — radial, brighter where light enters most directly,
+  // darker at the far edge.  Reinforces the sense of thickness.
   const hcx = cx + lightDx * maxR * 0.38
   const hcy = cy + lightDy * maxR * 0.38
   const refractGrad = ctx.createRadialGradient(hcx, hcy, 0, cx, cy, maxR * 1.05)
-  refractGrad.addColorStop(0,    'rgba(255,255,255,0.28)')
-  refractGrad.addColorStop(0.35, 'rgba(255,255,255,0.07)')
-  refractGrad.addColorStop(0.70, 'rgba(0,0,0,0.03)')
-  refractGrad.addColorStop(1,    'rgba(0,0,0,0.26)')
+  refractGrad.addColorStop(0,    'rgba(255,255,255,0.32)')
+  refractGrad.addColorStop(0.35, 'rgba(255,255,255,0.08)')
+  refractGrad.addColorStop(0.70, 'rgba(0,0,0,0.04)')
+  refractGrad.addColorStop(1,    'rgba(0,0,0,0.30)')
   trace()
   ctx.fillStyle = refractGrad
   ctx.fill()
 
-  // Caustic hot spot — small bright specular simulating glass focusing light.
+  // Caustic band — a bright diagonal streak running perpendicular to the light
+  // direction, clipped inside the pane.  This is the most visible sign of glass
+  // bending and focusing light; its position varies per region type so adjacent
+  // panes look independent rather than identical.
+  trace()
+  ctx.save()
+  ctx.clip()
+  const perpDx = -lightDy, perpDy = lightDx   // perpendicular to light direction
+  const bandPos = ((colorIdx * 0.618) % 1.0) - 0.5   // golden-ratio spread, ±0.5
+  const bx = cx + perpDx * bandPos * maxR * 1.4
+  const by = cy + perpDy * bandPos * maxR * 1.4
+  const bHalfW = maxR * 0.20   // half-width of the caustic band (in light direction)
+  const bLen   = maxR * 5      // long enough to cross any polygon (clipped anyway)
+  const bandGrad = ctx.createLinearGradient(
+    bx + lightDx * bHalfW, by + lightDy * bHalfW,
+    bx - lightDx * bHalfW, by - lightDy * bHalfW
+  )
+  bandGrad.addColorStop(0,   'rgba(255,255,255,0)')
+  bandGrad.addColorStop(0.5, 'rgba(255,255,255,0.35)')
+  bandGrad.addColorStop(1,   'rgba(255,255,255,0)')
+  ctx.beginPath()
+  ctx.moveTo(bx + perpDx * bLen + lightDx * bHalfW, by + perpDy * bLen + lightDy * bHalfW)
+  ctx.lineTo(bx - perpDx * bLen + lightDx * bHalfW, by - perpDy * bLen + lightDy * bHalfW)
+  ctx.lineTo(bx - perpDx * bLen - lightDx * bHalfW, by - perpDy * bLen - lightDy * bHalfW)
+  ctx.lineTo(bx + perpDx * bLen - lightDx * bHalfW, by + perpDy * bLen - lightDy * bHalfW)
+  ctx.closePath()
+  ctx.fillStyle = bandGrad
+  ctx.fill()
+  ctx.restore()
+
+  // Caustic hot spot — small bright specular near the lit-side entry point.
   const scx2 = cx + lightDx * maxR * 0.55
   const scy2 = cy + lightDy * maxR * 0.55
-  const causticGrad = ctx.createRadialGradient(scx2, scy2, 0, scx2, scy2, maxR * 0.32)
-  causticGrad.addColorStop(0, 'rgba(255,255,255,0.36)')
+  const causticGrad = ctx.createRadialGradient(scx2, scy2, 0, scx2, scy2, maxR * 0.30)
+  causticGrad.addColorStop(0, 'rgba(255,255,255,0.42)')
   causticGrad.addColorStop(1, 'rgba(255,255,255,0)')
   trace()
   ctx.fillStyle = causticGrad
   ctx.fill()
 
-  // Inner edge shadow — clipped thick stroke gives a dark bevel at the perimeter
-  // that reads as glass depth / came shadow.
+  // Inner edge shadow — dark bevel at perimeter reads as glass thickness.
   trace()
   ctx.save()
   ctx.clip()
@@ -653,12 +698,12 @@ function drawGlassPane(ctx, pts, colorIdx, lightDx, lightDy, sc) {
   ctx.stroke()
   ctx.restore()
 
-  // Inner edge highlight — thin bright rim, glass catching ambient light at edge.
+  // Inner edge highlight — bright rim where the glass edge catches the light.
   trace()
   ctx.save()
   ctx.clip()
   trace()
-  ctx.strokeStyle = 'rgba(255,255,255,0.20)'
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)'
   ctx.lineWidth = 2 / sc
   ctx.stroke()
   ctx.restore()
