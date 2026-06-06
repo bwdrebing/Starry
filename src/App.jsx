@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
+import TilingThumbnail from './TilingThumbnail'
 import { VERTEX_COLORS } from './truchet'
 import { SQUARE_VERTEX_COLORS } from './squareTruchet'
 import './App.css'
@@ -283,16 +284,20 @@ export default function App() {
                   return (
                     <div key={group.label} className="tiling-group">
                       <div className="tiling-group-label">{group.label}</div>
-                      {items.map(({ label, index }) => (
-                        <button
-                          key={index}
-                          ref={index === tilingIndex ? selectedTilingRef : null}
-                          className={`tiling-item${index === tilingIndex ? ' selected' : ''}`}
-                          onClick={() => setTilingIndex(index)}
-                        >
-                          {tilingShortLabel(label)}
-                        </button>
-                      ))}
+                      <div className="tiling-grid">
+                        {items.map(({ config, label, index }) => (
+                          <button
+                            key={index}
+                            ref={index === tilingIndex ? selectedTilingRef : null}
+                            className={`tiling-thumb-item${index === tilingIndex ? ' selected' : ''}`}
+                            onClick={() => setTilingIndex(index)}
+                            title={label}
+                          >
+                            <TilingThumbnail configuration={config} size={72} />
+                            <span className="tiling-thumb-label">{tilingShortLabel(label)}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )
                 })}
