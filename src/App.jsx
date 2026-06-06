@@ -19,8 +19,12 @@ function tilingShortLabel(label) {
     .replace(/^Quasi-periodic:\s*/, '')
 }
 
-function getOpenHeight() {
-  return Math.min(Math.round(window.innerHeight * 0.56), 420)
+function getNormalHeight() {
+  return Math.min(Math.round(window.innerHeight * 0.58), 420)
+}
+
+function getTilingMaxHeight() {
+  return Math.min(Math.round(window.innerHeight * 0.80), 680)
 }
 
 const TILINGS = [
@@ -97,7 +101,7 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
   const [activeTab, setActiveTab] = useState('motif')
-  const [panelHeight, setPanelHeight] = useState(getOpenHeight)
+  const [panelHeight, setPanelHeight] = useState(getNormalHeight)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
   const selectedTilingRef = useRef(null)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
@@ -110,11 +114,16 @@ export default function App() {
   const isSquareTruchet = effectiveConfig === 'squareTruchet'
 
   function toggleTab(tab) {
+    const normalH = getNormalHeight()
     if (activeTab !== tab) {
       setActiveTab(tab)
-      if (panelHeight === 0) setPanelHeight(getOpenHeight())
+      if (panelHeight === 0) {
+        setPanelHeight(normalH)
+      } else if (tab !== 'tiling' && panelHeight > normalH) {
+        setPanelHeight(normalH)
+      }
     } else {
-      setPanelHeight(h => h > 0 ? 0 : getOpenHeight())
+      setPanelHeight(h => h > 0 ? 0 : normalH)
     }
   }
 
@@ -125,7 +134,8 @@ export default function App() {
 
     const startY = e.clientY
     const startH = panel.offsetHeight
-    const maxH = getOpenHeight()
+    const normalH = getNormalHeight()
+    const maxH = activeTab === 'tiling' ? getTilingMaxHeight() : normalH
 
     panel.style.transition = 'none'
 
@@ -140,10 +150,17 @@ export default function App() {
       document.removeEventListener('pointerup', onUp)
 
       const currentH = panel.offsetHeight
-      const targetH = currentH < maxH * 0.4 ? 0 : maxH
+      let targetH
+      if (currentH < normalH * 0.4) {
+        targetH = 0
+      } else if (currentH <= normalH + 10) {
+        targetH = normalH
+      } else {
+        targetH = currentH  // keep expanded height (tiling tab only)
+      }
 
-      panel.style.transition = ''
-      void panel.offsetHeight
+      panel.style.transition = targetH === currentH ? 'none' : ''
+      if (targetH !== currentH) void panel.offsetHeight
       panel.style.height = targetH + 'px'
       setPanelHeight(targetH)
     }
