@@ -568,3 +568,231 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
     ctx.restore()
   }
 }
+
+// ── Stained-glass rendering ───────────────────────────────────────────────────
+
+// RGB triples for vivid stained-glass hues; assigned by region type so the
+// same geometric region always gets the same colour within a draw call.
+const GLASS_COLORS = [
+  [200,  35,  35],   // ruby red
+  [ 30,  60, 200],   // cobalt blue
+  [ 25, 155,  55],   // emerald
+  [155,  35, 195],   // amethyst
+  [220, 155,  20],   // amber
+  [ 20, 185, 185],   // teal
+  [215,  90,  20],   // burnt orange
+  [130, 210,  40],   // chartreuse
+  [210,  35, 130],   // rose
+  [ 40, 150, 220],   // sky blue
+  [215, 130,  50],   // warm amber
+  [ 90, 190, 140],   // jade
+]
+
+function glassRgba(idx, alpha) {
+  const [r, g, b] = GLASS_COLORS[idx % GLASS_COLORS.length]
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`
+}
+
+function drawGlassPane(ctx, pts, colorIdx, lightDx, lightDy, sc) {
+  if (pts.length < 3) return
+  let cx = 0, cy = 0
+  for (const [x, y] of pts) { cx += x; cy += y }
+  cx /= pts.length; cy /= pts.length
+  let maxR = 0
+  for (const [x, y] of pts) {
+    const d = Math.hypot(x - cx, y - cy)
+    if (d > maxR) maxR = d
+  }
+  maxR = Math.max(maxR, 2 / sc)
+
+  const trace = () => {
+    ctx.beginPath()
+    ctx.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+    ctx.closePath()
+  }
+
+  ctx.save()
+
+  // Base glass colour
+  trace()
+  ctx.fillStyle = glassRgba(colorIdx, 0.82)
+  ctx.fill()
+
+  // Refraction gradient — bright toward light source, dark opposite, simulates
+  // directional light bending through the glass thickness.
+  const hcx = cx + lightDx * maxR * 0.38
+  const hcy = cy + lightDy * maxR * 0.38
+  const refractGrad = ctx.createRadialGradient(hcx, hcy, 0, cx, cy, maxR * 1.05)
+  refractGrad.addColorStop(0,    'rgba(255,255,255,0.28)')
+  refractGrad.addColorStop(0.35, 'rgba(255,255,255,0.07)')
+  refractGrad.addColorStop(0.70, 'rgba(0,0,0,0.03)')
+  refractGrad.addColorStop(1,    'rgba(0,0,0,0.26)')
+  trace()
+  ctx.fillStyle = refractGrad
+  ctx.fill()
+
+  // Caustic hot spot — small bright specular simulating glass focusing light.
+  const scx2 = cx + lightDx * maxR * 0.55
+  const scy2 = cy + lightDy * maxR * 0.55
+  const causticGrad = ctx.createRadialGradient(scx2, scy2, 0, scx2, scy2, maxR * 0.32)
+  causticGrad.addColorStop(0, 'rgba(255,255,255,0.36)')
+  causticGrad.addColorStop(1, 'rgba(255,255,255,0)')
+  trace()
+  ctx.fillStyle = causticGrad
+  ctx.fill()
+
+  // Inner edge shadow — clipped thick stroke gives a dark bevel at the perimeter
+  // that reads as glass depth / came shadow.
+  trace()
+  ctx.save()
+  ctx.clip()
+  trace()
+  ctx.strokeStyle = 'rgba(0,0,0,0.42)'
+  ctx.lineWidth = 6 / sc
+  ctx.stroke()
+  ctx.restore()
+
+  // Inner edge highlight — thin bright rim, glass catching ambient light at edge.
+  trace()
+  ctx.save()
+  ctx.clip()
+  trace()
+  ctx.strokeStyle = 'rgba(255,255,255,0.20)'
+  ctx.lineWidth = 2 / sc
+  ctx.stroke()
+  ctx.restore()
+
+  ctx.restore()
+}
+
+function drawLeadCame(ctx, segs, lightDx, lightDy, sc) {
+  if (segs.length === 0) return
+  const cameW = 3.5 / sc
+  const hlW   = 0.8  / sc
+  const hlOff = 1.3  / sc
+
+  ctx.save()
+  ctx.lineCap  = 'round'
+  ctx.lineJoin = 'round'
+
+  // Dark came body
+  ctx.strokeStyle = '#0c0c20'
+  ctx.lineWidth   = cameW
+  for (const [p1, p2] of segs) {
+    ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()
+  }
+
+  // Specular highlight on the lit face of the came — offset by one came-half-width
+  // toward the light source direction.
+  ctx.strokeStyle = 'rgba(255,255,255,0.52)'
+  ctx.lineWidth   = hlW
+  for (const [p1, p2] of segs) {
+    const dx = p2[0] - p1[0], dy = p2[1] - p1[1]
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-6) continue
+    const nx = -dy / len, ny = dx / len
+    const side = (nx * lightDx + ny * lightDy) > 0 ? 1 : -1
+    const ox = nx * side * hlOff, oy = ny * side * hlOff
+    ctx.beginPath()
+    ctx.moveTo(p1[0] + ox, p1[1] + oy)
+    ctx.lineTo(p2[0] + ox, p2[1] + oy)
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+export function drawGlass(ctx, shapes, theta = Math.PI / 4, delta = 0,
+  thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2,
+  parquetDirection = 'none', thetaMin = theta, thetaMax = theta,
+  parquetFunction = 'wave-ltr', time = 0, speed = 1,
+  linearAngle = 0, centerX = 0, centerY = 0,
+  ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+
+  const sc = ctx.getTransform?.().a ?? 1
+  // Light arrives from the upper-left (canvas coords: negative x, negative y).
+  const LIGHT_DX = -0.707, LIGHT_DY = -0.707
+
+  const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax,
+    time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
+
+  const colorMap = new Map()
+  let nextColorIdx = 0
+  const colorIdxFor = key => {
+    if (!colorMap.has(key)) colorMap.set(key, nextColorIdx++ % GLASS_COLORS.length)
+    return colorMap.get(key)
+  }
+
+  const SNAP = 0.5
+  const vertexMap = new Map()
+
+  ctx.save()
+
+  for (const shape of shapes) {
+    const raw = shape[0]
+    if (!raw || raw.length < 3) continue
+    const vertices = ensureClockwise(raw)
+    const n = vertices.length
+    const effectiveSkip = n >= 6 ? skip : 0
+    const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, bandWidth)
+    const c = centroid(vertices)
+
+    const starPts = Array.from({ length: n }, (_, i) => {
+      const j = (i + 1 + effectiveSkip) % n
+      const rayA = edges[i].left, rayB = edges[j].right
+      const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+      return (pt && pointInPolygon(pt, vertices))
+        ? pt
+        : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+    })
+
+    const tileMids = Array.from({ length: n }, (_, i) => {
+      const a = vertices[i], b = vertices[(i + 1) % n]
+      return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    })
+
+    const tilePoly = [...starPts, ...tileMids]
+      .sort((a, b) => Math.atan2(a[1] - c[1], a[0] - c[0]) - Math.atan2(b[1] - c[1], b[0] - c[0]))
+    drawGlassPane(ctx, tilePoly, colorIdxFor(`t${n}`), LIGHT_DX, LIGHT_DY, sc)
+
+    for (let k = 0; k < n; k++) {
+      const v = vertices[k]
+      const vkey = `${Math.round(v[0] * 2)},${Math.round(v[1] * 2)}`
+      let best = starPts[0], bestD = Infinity
+      for (const sp of starPts) {
+        const d = (sp[0] - v[0]) ** 2 + (sp[1] - v[1]) ** 2
+        if (d < bestD) { bestD = d; best = sp }
+      }
+      if (!vertexMap.has(vkey)) vertexMap.set(vkey, { pos: v, stars: [], edgeMids: [] })
+      const vm = vertexMap.get(vkey)
+      vm.stars.push({ pt: best, tileN: n })
+      for (const mid of [tileMids[k], tileMids[(k - 1 + n) % n]]) {
+        if (!vm.edgeMids.some(m => Math.abs(m[0] - mid[0]) < SNAP && Math.abs(m[1] - mid[1]) < SNAP))
+          vm.edgeMids.push(mid)
+      }
+    }
+  }
+
+  for (const { pos: v, stars, edgeMids } of vertexMap.values()) {
+    if (stars.length < 3) continue
+    const uniq = stars.filter((e, idx) =>
+      stars.findIndex(f =>
+        Math.abs(f.pt[0] - e.pt[0]) < SNAP &&
+        Math.abs(f.pt[1] - e.pt[1]) < SNAP) === idx)
+    if (uniq.length < 3) continue
+    const allPts = [...uniq.map(e => e.pt), ...edgeMids]
+      .sort((a, b) =>
+        Math.atan2(a[1] - v[1], a[0] - v[0]) - Math.atan2(b[1] - v[1], b[0] - v[0]))
+    const nsKey = uniq.map(e => e.tileN).sort((a, b) => a - b).join('.')
+    drawGlassPane(ctx, allPts, colorIdxFor(`v${uniq.length}.${nsKey}`), LIGHT_DX, LIGHT_DY, sc)
+  }
+
+  const { underSegs, overSegs } = getHankinSegments(
+    shapes, theta, delta, thick, overlap, overlapGap, bandWidth,
+    parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed,
+    linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
+  drawLeadCame(ctx, [...underSegs, ...overSegs], LIGHT_DX, LIGHT_DY, sc)
+
+  ctx.restore()
+}

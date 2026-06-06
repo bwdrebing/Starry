@@ -77,6 +77,7 @@ export default function App() {
   const [radius, setRadius] = useState(0.15)
   const [delta, setDelta] = useState(0)
   const [debug, setDebug] = useState(false)
+  const [glass, setGlass] = useState(false)
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
@@ -209,6 +210,7 @@ export default function App() {
           radius={radius}
           delta={delta}
           debug={debug}
+          glass={glass}
           thick={thick}
           bandWidth={bandWidth}
           overlap={thick}
@@ -633,6 +635,11 @@ export default function App() {
                 Export SVG
               </button>
             </div>
+
+            <label className="debug-toggle">
+              <input type="checkbox" checked={glass} onChange={e => setGlass(e.target.checked)} />
+              glass
+            </label>
 
             <label className="debug-toggle">
               <input type="checkbox" checked={debug} onChange={e => setDebug(e.target.checked)} />
