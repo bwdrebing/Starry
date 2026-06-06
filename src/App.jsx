@@ -19,6 +19,10 @@ function tilingShortLabel(label) {
     .replace(/^Quasi-periodic:\s*/, '')
 }
 
+function getOpenHeight() {
+  return Math.min(Math.round(window.innerHeight * 0.56), 420)
+}
+
 const TILINGS = [
   // ── 1-Uniform (Archimedean) ──────────────────────────────────────────────
   { label: '1-Uniform: 3⁶ — Triangular',                config: '3/m30/r(h2)',    truchetConfig: 'truchet' },
@@ -70,6 +74,7 @@ const TILINGS = [
 
 export default function App() {
   const canvasRef = useRef(null)
+  const panelRef = useRef(null)
   const [tilingIndex, setTilingIndex] = useState(0)
   const [motifType, setMotifType] = useState('hankin') // 'hankin' | 'truchet'
   const [showMotif, setShowMotif] = useState(true)
@@ -92,6 +97,7 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
   const [activeTab, setActiveTab] = useState('motif')
+  const [panelHeight, setPanelHeight] = useState(getOpenHeight)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
   const selectedTilingRef = useRef(null)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
@@ -104,7 +110,46 @@ export default function App() {
   const isSquareTruchet = effectiveConfig === 'squareTruchet'
 
   function toggleTab(tab) {
-    setActiveTab(t => t === tab ? null : tab)
+    if (activeTab !== tab) {
+      setActiveTab(tab)
+      if (panelHeight === 0) setPanelHeight(getOpenHeight())
+    } else {
+      setPanelHeight(h => h > 0 ? 0 : getOpenHeight())
+    }
+  }
+
+  function onHandlePointerDown(e) {
+    e.preventDefault()
+    const panel = panelRef.current
+    if (!panel) return
+
+    const startY = e.clientY
+    const startH = panel.offsetHeight
+    const maxH = getOpenHeight()
+
+    panel.style.transition = 'none'
+
+    function onMove(me) {
+      const dy = me.clientY - startY
+      const newH = Math.max(0, Math.min(maxH, startH - dy))
+      panel.style.height = newH + 'px'
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+
+      const currentH = panel.offsetHeight
+      const targetH = currentH < maxH * 0.4 ? 0 : maxH
+
+      panel.style.transition = ''
+      void panel.offsetHeight
+      panel.style.height = targetH + 'px'
+      setPanelHeight(targetH)
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
   }
 
   function updateTileMeta(updates) {
@@ -208,8 +253,6 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [activeTab])
 
-  const panelOpen = activeTab !== null
-
   return (
     <div className="app">
       <StarryCanvas />
@@ -259,7 +302,11 @@ export default function App() {
       {/* ── 3-tab bottom drawer ── */}
       <div className="drawer">
 
-        <div className={`drawer-panel${panelOpen ? ' open' : ''}`}>
+        <div className="drawer-handle" onPointerDown={onHandlePointerDown}>
+          <div className="drawer-handle-pill" />
+        </div>
+
+        <div className="drawer-panel" ref={panelRef} style={{ height: panelHeight }}>
           <div className="drawer-panel-inner">
 
             {/* ── TILING TAB ────────────────────────────────────────────── */}
@@ -662,7 +709,7 @@ export default function App() {
 
         {/* Always-visible tab bar */}
         <div className="drawer-tabs">
-          <button className={`drawer-tab${activeTab === 'tiling' ? ' active' : ''}`}
+          <button className={`drawer-tab${activeTab === 'tiling' && panelHeight > 0 ? ' active' : ''}`}
             onClick={() => toggleTab('tiling')}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
               strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -673,7 +720,7 @@ export default function App() {
             </svg>
             <span>Tiling</span>
           </button>
-          <button className={`drawer-tab${activeTab === 'motif' ? ' active' : ''}`}
+          <button className={`drawer-tab${activeTab === 'motif' && panelHeight > 0 ? ' active' : ''}`}
             onClick={() => toggleTab('motif')}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
               strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -681,7 +728,7 @@ export default function App() {
             </svg>
             <span>Motif</span>
           </button>
-          <button className={`drawer-tab${activeTab === 'style' ? ' active' : ''}`}
+          <button className={`drawer-tab${activeTab === 'style' && panelHeight > 0 ? ' active' : ''}`}
             onClick={() => toggleTab('style')}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor"
               strokeWidth="1.4" strokeLinecap="round">
