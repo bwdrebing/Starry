@@ -1,10 +1,22 @@
 import { useState, useRef, useEffect } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
-import TilingGallery from './TilingGallery'
 import { VERTEX_COLORS } from './truchet'
 import { SQUARE_VERTEX_COLORS } from './squareTruchet'
 import './App.css'
+
+const TILING_GROUPS = [
+  { label: '1-Uniform',      prefix: '1-Uniform' },
+  { label: '2-Uniform',      prefix: '2-Uniform' },
+  { label: '3-Uniform',      prefix: '3-Uniform' },
+  { label: 'Quasi-periodic', prefix: 'Quasi-periodic' },
+]
+
+function tilingShortLabel(label) {
+  return label
+    .replace(/^\d+-Uniform:\s*/, '')
+    .replace(/^Quasi-periodic:\s*/, '')
+}
 
 const TILINGS = [
   // ── 1-Uniform (Archimedean) ──────────────────────────────────────────────
@@ -79,8 +91,8 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
   const [activeTab, setActiveTab] = useState('motif')
-  const [galleryOpen, setGalleryOpen] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
+  const selectedTilingRef = useRef(null)
   const [selectedTileMeta, setSelectedTileMeta] = useState(null)
 
   const currentTiling   = TILINGS[tilingIndex]
@@ -186,6 +198,15 @@ export default function App() {
     if (!TILINGS[tilingIndex].truchetConfig) setMotifType('hankin')
   }, [tilingIndex])
 
+  // Scroll the selected tiling into view after the panel opens
+  useEffect(() => {
+    if (activeTab !== 'tiling') return
+    const timer = setTimeout(() => {
+      selectedTilingRef.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+    }, 290)
+    return () => clearTimeout(timer)
+  }, [activeTab])
+
   const panelOpen = activeTab !== null
 
   return (
@@ -244,24 +265,6 @@ export default function App() {
             {activeTab === 'tiling' && (
               <>
                 <div className="prop-row">
-                  <span className="prop-label">Pattern</span>
-                  <div className="prop-control">
-                    <button className="pattern-picker-btn" onClick={() => setGalleryOpen(true)}>
-                      <span className="pattern-picker-label">
-                        {TILINGS[tilingIndex].label
-                          .replace(/^\d+-Uniform:\s*/, '')
-                          .replace(/^Quasi-periodic:\s*/, '')
-                          .replace(/^Truchet:\s*/, '')}
-                      </span>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
-                        strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="2,4 5,7 8,4"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="prop-row">
                   <span className="prop-label">Scale</span>
                   <div className="prop-control">
                     <input id="radius-slider" type="range" min={0.05} max={1} step={0.05}
@@ -269,6 +272,30 @@ export default function App() {
                   </div>
                   <span className="prop-value">{Math.round(radius * 100)}%</span>
                 </div>
+
+                <div className="prop-section" />
+
+                {TILING_GROUPS.map(group => {
+                  const items = TILINGS
+                    .map((t, i) => ({ ...t, index: i }))
+                    .filter(t => t.label.startsWith(group.prefix))
+                  if (items.length === 0) return null
+                  return (
+                    <div key={group.label} className="tiling-group">
+                      <div className="tiling-group-label">{group.label}</div>
+                      {items.map(({ label, index }) => (
+                        <button
+                          key={index}
+                          ref={index === tilingIndex ? selectedTilingRef : null}
+                          className={`tiling-item${index === tilingIndex ? ' selected' : ''}`}
+                          onClick={() => setTilingIndex(index)}
+                        >
+                          {tilingShortLabel(label)}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })}
               </>
             )}
 
@@ -665,14 +692,6 @@ export default function App() {
         </div>
       </div>
 
-      {galleryOpen && (
-        <TilingGallery
-          tilings={TILINGS}
-          selectedIndex={tilingIndex}
-          onSelect={setTilingIndex}
-          onClose={() => setGalleryOpen(false)}
-        />
-      )}
     </div>
   )
 }
