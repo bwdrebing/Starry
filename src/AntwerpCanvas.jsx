@@ -294,6 +294,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     }
 
     ctx.restore()
+    if (shapesRef.current.length > 0) canvas.dataset.rendered = '1'
   }, [])
 
   // Keep refs in sync and redraw when display props change
@@ -711,6 +712,7 @@ ${overPaths}
   return (
     <canvas
       ref={canvasRef}
+      data-testid="tiling-canvas"
       style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }}
     />
   )
