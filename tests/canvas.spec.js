@@ -34,52 +34,67 @@ async function setSlider(page, id, value) {
   await page.waitForTimeout(80)
 }
 
+// Open a drawer tab by index: 0=Tiling, 1=Motif, 2=Style.
+// If the tab is already active this is a no-op (clicking it again would close it).
+async function openTab(page, idx) {
+  const tab = page.locator('.drawer-tab').nth(idx)
+  const isActive = await tab.evaluate(el => el.classList.contains('active'))
+  if (!isActive) {
+    await tab.click()
+    await page.waitForTimeout(200)
+  }
+}
+
 test.describe('canvas rendering', () => {
-  // ── Hexagonal tiling (default, index 0) ──────────────────────────────────
+  // ── Default tiling (index 0) ──────────────────────────────────────────────
 
-  test('hexagonal — default state', async ({ page }) => {
+  test('default tiling — default state', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-default.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling.png')
   })
 
-  test('hexagonal — motif off', async ({ page }) => {
+  test('default tiling — motif off', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
-    await page.locator('#motif-check').uncheck()
+    // Motif tab is open by default; toggle switch is directly accessible
+    await page.locator('[aria-label="Toggle motif"]').click()
     await page.waitForTimeout(80)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-no-motif.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-no-motif.png')
   })
 
-  test('hexagonal — thick bands', async ({ page }) => {
+  test('default tiling — thick bands', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
-    await page.locator('#thick-check').check()
+    await openTab(page, 2) // Style tab
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
     await page.waitForTimeout(80)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-thick.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-thick.png')
   })
 
-  test('hexagonal — theta 30°', async ({ page }) => {
+  test('default tiling — theta 30°', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
+    await openTab(page, 2) // Style tab
     await setSlider(page, '#theta-slider', 30)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-theta-30.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-theta-30.png')
   })
 
-  test('hexagonal — delta 0.3', async ({ page }) => {
+  test('default tiling — delta 0.3', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
+    await openTab(page, 2) // Style tab
     await setSlider(page, '#delta-slider', 0.3)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-delta-03.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-delta-03.png')
   })
 
-  // ── Square tiling (index 1, opened via gallery) ───────────────────────────
+  // ── Square tiling ─────────────────────────────────────────────────────────
 
   test('square — default state', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
-    await page.locator('.pattern-picker-btn').click()
-    await page.getByText('4⁴ — Square').click()
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 4⁴ — Square"]').click()
     await waitForRender(page)
     expect(await canvasSnapshot(page)).toMatchSnapshot('square-default.png')
   })
@@ -89,8 +104,8 @@ test.describe('canvas rendering', () => {
   test('penrose 5-fold — default state', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
-    await page.locator('.pattern-picker-btn').click()
-    await page.getByText('5-fold (Penrose P3)').click()
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="Quasi-periodic: 5-fold (Penrose P3)"]').click()
     await waitForRender(page)
     expect(await canvasSnapshot(page)).toMatchSnapshot('penrose5-default.png')
   })
