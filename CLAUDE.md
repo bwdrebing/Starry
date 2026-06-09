@@ -86,7 +86,43 @@ All state lives in `App`. Key controls:
 
 ---
 
-## File Map
+## Testing
+
+Screenshot tests use Playwright to render the app in a headless browser and compare the canvas bitmap against committed baseline images.
+
+### Running tests
+
+```bash
+npm test               # run all tests against committed baselines
+npm run test:update    # re-generate baselines after an intentional visual change
+```
+
+Each test builds the app (`vite build`) and serves it via `vite preview`, then takes a pixel-exact screenshot of the tiling canvas (composited on black). Tests take ~60 seconds due to the build step.
+
+Baseline PNGs live in `tests/__snapshots__/`. Commit them whenever you run `test:update`.
+
+### After implementing a feature
+
+1. Run `npm test` to confirm nothing regressed.
+2. If the feature intentionally changes canvas output, run `npm run test:update` to regenerate the affected snapshots, review the diff, then commit the updated PNGs alongside the code change.
+3. Add new test cases in `tests/canvas.spec.js` for any new rendering states the feature introduces (new tiling type, new control combination, etc.).
+
+### Adding a new snapshot test
+
+```js
+test('my new state', async ({ page }) => {
+  await page.goto('/')
+  await waitForRender(page)
+  // interact with the UI to reach the state under test
+  expect(await canvasSnapshot(page)).toMatchSnapshot('my-new-state.png')
+})
+```
+
+Run `npm run test:update` once to create the baseline, then `npm test` on subsequent runs to guard it.
+
+---
+
+
 
 | File | Purpose |
 |---|---|
