@@ -22,6 +22,13 @@ Two tiling systems are supported:
 - Symmetry 5 → Penrose P3; 7 → heptagonal; 8 → Ammann-Beenker.
 - Irrational (golden-ratio-spaced) per-family offsets prevent three lines from meeting at a point, which would produce degenerate dual tiles.
 
+**Girih tilings** (`src/girih.js`)
+- Periodic patterns of the classic Persian girih tiles (regular decagon, elongated hexagon, bow tie), all edges equal, all angles multiples of 36°.
+- Tiles are built by a turtle walk over interior-angle lists and assembled with rigid edge-to-edge gluing; the resulting unit cells are replicated over an oblique lattice.
+- Two variants: `'db'` (decagons linked by bow-tie bridges; one decagon + one bow tie per cell) and `'dhb'` (staggered decagon rows with upright hexagons and mirrored bow-tie pairs; decagon + hexagon + 2 bow ties per cell). Config strings are `girih-db` / `girih-dhb`.
+- Tile meta is `{ girih: true, kind, skipOffset }`. `skipOffset: 2` on decagons makes the Hankin motif pair edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star; `getHankinSegments` adds each tile's `skipOffset` to the global `skip` (and includes it in the motif cache key). The canonical girih angle is θ = 36° (straps cross edges at 54°).
+- Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex, which the motif code tolerates (centroid-based inward normals, ray-exit fallback).
+
 ### 2. Hankin Motif (`src/hankin.js`)
 
 The core algorithm. For every polygon in the tiling:
@@ -134,6 +141,7 @@ Run `npm run test:update` once to create the baseline, then `npm test` on subseq
 |---|---|
 | `src/hankin.js` | All motif geometry: ray construction, intersection, thick bands, painters algorithm |
 | `src/penrose.js` | Quasi-periodic tiling via de Bruijn multigrid |
+| `src/girih.js` | Periodic girih tilings (decagon / hexagon / bow tie) |
 | `src/AntwerpCanvas.jsx` | Canvas component, rAF loop, Antwerp tiling, SVG export |
 | `src/App.jsx` | Root component, all UI controls and state |
 | `src/StarryCanvas.jsx` | Decorative starfield background canvas |

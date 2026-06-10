@@ -11,12 +11,14 @@ const TILING_GROUPS = [
   { label: '2-Uniform',      prefix: '2-Uniform' },
   { label: '3-Uniform',      prefix: '3-Uniform' },
   { label: 'Quasi-periodic', prefix: 'Quasi-periodic' },
+  { label: 'Girih',          prefix: 'Girih' },
 ]
 
 function tilingShortLabel(label) {
   return label
     .replace(/^\d+-Uniform:\s*/, '')
     .replace(/^Quasi-periodic:\s*/, '')
+    .replace(/^Girih:\s*/, '')
 }
 
 const TILINGS = [
@@ -66,6 +68,9 @@ const TILINGS = [
   { label: 'Quasi-periodic: 5-fold (Penrose P3)',          config: 'penrose' },
   { label: 'Quasi-periodic: 7-fold',                       config: 'penrose7' },
   { label: 'Quasi-periodic: 8-fold (Ammann-Beenker)',      config: 'penrose8' },
+  // ── Girih (Persian strapwork tiles) ──────────────────────────────────────
+  { label: 'Girih: Decagons & Bowties',                    config: 'girih-db' },
+  { label: 'Girih: Decagons, Hexagons & Bowties',          config: 'girih-dhb' },
 ]
 
 export default function App() {

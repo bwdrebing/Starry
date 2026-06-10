@@ -151,4 +151,28 @@ test.describe('canvas rendering', () => {
     await waitForRender(page)
     expect(await canvasSnapshot(page)).toMatchSnapshot('penrose5-default.png')
   })
+
+  // ── Girih ─────────────────────────────────────────────────────────────────
+
+  test('girih decagons-hexagons-bowties — default state', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="Girih: Decagons, Hexagons & Bowties"]').click()
+    await waitForRender(page)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-dhb-default.png')
+  })
+
+  // θ = 36° is the canonical girih angle (straps cross tile edges at 54°),
+  // where the decagon motif becomes the classic {10/3} ten-pointed star.
+  test('girih decagons-bowties — theta 36°', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="Girih: Decagons & Bowties"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#theta-slider', 36)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-theta-36.png')
+  })
 })
