@@ -88,6 +88,19 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-delta-03.png')
   })
 
+  // ── Parquet deformation ───────────────────────────────────────────────────
+
+  // Spatially varying θ takes the non-cached path in getHankinSegments (the
+  // congruent-tile motif cache only applies when parquet is off).
+  test('default tiling — parquet linear', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await page.locator('button[title="Linear gradient"]').click()
+    await page.waitForTimeout(80)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-parquet-ltr.png')
+  })
+
   // ── Hexagonal tiling ──────────────────────────────────────────────────────
 
   // Density (skip) only affects polygons with ≥6 sides, so the weave-interleaving
