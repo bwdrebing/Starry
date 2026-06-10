@@ -3,12 +3,15 @@
 // pairs with the right ray of edge (i+1+skip)%n, converging at a star point.
 //
 // Thick mode: each ray becomes two offset band-edge lines (bplus outer, bminus inner).
-// Overlap mode: ribbons weave over/under using BFS 2-colouring of the crossing graph.
-//   Each pair of strands is adjacent in the graph if any of their segments cross.
-//   A bipartite colouring assigns colour-0 (over) and colour-1 (under) consistently.
-//   Odd-cycle components fall back to the A-over-B rule (left ray always over).
-//   Under-segments get individual gaps at each crossing with each over-strand,
-//   so multiple crossings produce multiple separate gaps rather than one big span.
+// Overlap mode: each edge radiates a + band (left ray) and a − band (right ray);
+//   each band is a ribbon bounded by its bplus/bminus lines. Bands weave by
+//   alternating over/under at successive ribbon crossings along their travel:
+//   a + band goes OVER its first crossing (the − band of its own edge) then
+//   alternates under/over/…; a − band goes UNDER its first crossing then
+//   alternates. When the two bands at a crossing disagree (both claim over or
+//   both claim under), the + band wins over the − band as a tie-break.
+//   The band that is under at a crossing gets a gap cut over the span where it
+//   passes behind the other band's ribbon (plus an overlapGap margin).
 
 function rotate2D([x, y], a) {
   const c = Math.cos(a), s = Math.sin(a)
@@ -277,9 +280,12 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
         segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
         segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
       }
+      return { segs, jPair }
+    })
+
+    const edgeLens = Array.from({ length: n }, (_, i) => {
       const va = vertices[i], vb = vertices[(i + 1) % n]
-      const edgeLen = Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-      return { segs, edgeLen }
+      return Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
     })
 
     // No weave: push all segments flat
@@ -292,100 +298,90 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
 
     // ── Weave rendering ────────────────────────────────────────────────────────
 
-    // Step 1: crossing adjacency — strands i and j are adjacent if any of their
-    // segments actually intersect inside both extents.
-    const adj = Array.from({ length: n }, () => [])
+    // Step 1: split each strand into its two bands. The + band is the left ray
+    // of edge i; the − band is the right ray of edge jPair. Each band owns the
+    // segments of both bplus/bminus boundary lines of that ray.
+    const bands = []
     for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        let found = false
-        outer: for (const sa of strands[i].segs) {
-          for (const sb of strands[j].segs) {
-            const ts = bandCrossParam(sa.origin, sa.end, sb.origin, sb.end)
-            if (ts.some(t => t > -1e-4 && t < 1 - 1e-6)) { found = true; break outer }
-          }
-        }
-        if (found) { adj[i].push(j); adj[j].push(i) }
+      const { segs, jPair } = strands[i]
+      bands.push({ segs: segs.filter(s => s.isA),  plus: true,  strand: i, edgeLen: edgeLens[i] })
+      bands.push({ segs: segs.filter(s => !s.isA), plus: false, strand: i, edgeLen: edgeLens[jPair] })
+    }
+
+    // Step 2: find every ribbon crossing between bands of different strands.
+    // (The two bands of one strand join at the star point — that is a bend in
+    // the ribbon, not a crossing.) For each crossing record, per boundary
+    // segment of each band, the clamped t-values where it crosses the other
+    // band's boundary lines, plus a representative t for ordering along travel.
+    const crossTs = (segsA, segsB) => segsA.map(sa =>
+      segsB.flatMap(sb => bandCrossParam(sa.origin, sa.end, sb.origin, sb.end))
+           .filter(t => t > -1e-4 && t < 1 - 1e-6)
+           .map(t => Math.max(0, Math.min(1, t))))
+
+    const crossings = []
+    for (let x = 0; x < bands.length; x++) {
+      for (let y = x + 1; y < bands.length; y++) {
+        if (bands[x].strand === bands[y].strand) continue
+        const tsOnA = crossTs(bands[x].segs, bands[y].segs)
+        const tsOnB = crossTs(bands[y].segs, bands[x].segs)
+        const flatA = tsOnA.flat(), flatB = tsOnB.flat()
+        if (flatA.length === 0 || flatB.length === 0) continue
+        crossings.push({
+          a: x, b: y, tsOnA, tsOnB,
+          repA: flatA.reduce((s, t) => s + t, 0) / flatA.length,
+          repB: flatB.reduce((s, t) => s + t, 0) / flatB.length,
+        })
       }
     }
 
-    // Step 2: BFS 2-coloring per connected component.
-    // colour 0 = over, colour 1 = under.
-    // Components start as colour 1 so their first neighbour becomes colour 0,
-    // matching the "left-ray (A) over right-ray (B)" convention at the first crossing.
-    // Odd-cycle components fall back to the A-over-B rule.
-    const colours  = new Array(n).fill(-1)
-    const fallback = new Array(n).fill(false)
-
-    for (let start = 0; start < n; start++) {
-      if (colours[start] !== -1) continue
-      colours[start] = 1
-      const queue     = [start]
-      const component = [start]
-      let conflict    = false
-
-      while (queue.length > 0) {
-        const cur = queue.shift()
-        for (const nb of adj[cur]) {
-          if (colours[nb] === -1) {
-            colours[nb] = 1 - colours[cur]
-            queue.push(nb)
-            component.push(nb)
-          } else if (colours[nb] === colours[cur]) {
-            conflict = true
-          }
-        }
+    // Step 3: alternate over/under along each band. Sorted by distance from the
+    // band's origin, crossing k is "over" for a + band when k is even, and for
+    // a − band when k is odd — so at the shared-edge crossing (first for both)
+    // the + band sits on top of the − band, and the weave alternates from there.
+    for (let bi = 0; bi < bands.length; bi++) {
+      const mine = []
+      for (const c of crossings) {
+        if (c.a === bi)      mine.push({ c, rep: c.repA, side: 'a' })
+        else if (c.b === bi) mine.push({ c, rep: c.repB, side: 'b' })
       }
-
-      if (conflict) {
-        // Odd cycle (e.g. triangles): fall back to A-segs over, B-segs under
-        for (const idx of component) fallback[idx] = true
-      }
+      mine.sort((p, q) => p.rep - q.rep)
+      mine.forEach((m, k) => {
+        const over = bands[bi].plus ? k % 2 === 0 : k % 2 === 1
+        if (m.side === 'a') m.c.aOver = over
+        else                m.c.bOver = over
+      })
     }
 
-    // Which segments of strand i go to allOver / allUnder?
-    const overSegsOf  = i => fallback[i] ? strands[i].segs.filter(s => s.isA)
-                                         : colours[i] === 0 ? strands[i].segs : []
-    const underSegsOf = i => fallback[i] ? strands[i].segs.filter(s => !s.isA)
-                                         : colours[i] === 1 ? strands[i].segs : []
-
-    // Step 3: push over-segments whole
-    for (let i = 0; i < n; i++) {
-      for (const seg of overSegsOf(i)) allOver.push([seg.origin, seg.end])
-    }
-
-    // Step 4: push under-segments with individual per-crossing gaps.
-    // For each adjacent over-strand, one gap interval is cut per crossing
-    // (from first t to last t through that ribbon), then all intervals are merged.
-    // This ensures multiple crossings with different over-strands each get their
-    // own gap rather than being collapsed into one long blank span.
-    for (let i = 0; i < n; i++) {
-      const underS = underSegsOf(i)
-      if (underS.length === 0) continue
-      const { edgeLen } = strands[i]
-
-      // Cache over-segs for each adjacent strand that actually has any
-      const adjOverSegs = adj[i]
-        .map(j => overSegsOf(j))
-        .filter(segs => segs.length > 0)
-
-      for (const seg of underS) {
+    // Step 4: cut a gap in whichever band is under at each crossing.
+    // When both bands claim the same state (non-alternating geometry), the
+    // + band wins over the − band; between same-sign bands the first wins.
+    const gaps = bands.map(b => b.segs.map(() => []))
+    for (const c of crossings) {
+      let aOver
+      if (c.aOver !== c.bOver) aOver = c.aOver
+      else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
+      else aOver = true
+      const underIdx = aOver ? c.b : c.a
+      const tsUnder  = aOver ? c.tsOnB : c.tsOnA
+      const under = bands[underIdx]
+      tsUnder.forEach((ts, si2) => {
+        if (ts.length === 0) return
+        const seg = under.segs[si2]
         const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
-        const extraG = sl > 1e-8 ? (overlapGap * edgeLen) / sl : 0
+        const extraG = sl > 1e-8 ? (overlapGap * under.edgeLen) / sl : 0
+        // One contiguous gap: entry to exit through the over band's ribbon
+        gaps[underIdx][si2].push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+      })
+    }
 
-        const intervals = []
-        for (const overSegs of adjOverSegs) {
-          // Collect all t-values where this under-seg crosses this particular over-strand
-          const ts = overSegs
-            .flatMap(c => bandCrossParam(seg.origin, seg.end, c.origin, c.end))
-            .map(t => Math.max(0, Math.min(1, t)))
-            .filter(t => t >= 0 && t < 1 - 1e-6)
-          if (ts.length === 0) continue
-          // One contiguous gap per over-strand (entry to exit through its ribbon)
-          intervals.push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
-        }
-
-        pushWithGaps(allUnder, seg.origin, seg.end, mergeIntervals(intervals))
-      }
+    // Step 5: push segments. Gapped segments go to allUnder (drawn first),
+    // untouched ones to allOver.
+    for (let bi = 0; bi < bands.length; bi++) {
+      bands[bi].segs.forEach((seg, si2) => {
+        const intervals = gaps[bi][si2]
+        if (intervals.length === 0) allOver.push([seg.origin, seg.end])
+        else pushWithGaps(allUnder, seg.origin, seg.end, mergeIntervals(intervals))
+      })
     }
   }
 

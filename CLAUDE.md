@@ -40,14 +40,16 @@ The band offsets are evaluated at each edge's **midpoint** (shared between adjac
 
 #### Painters algorithm / overlap (`getHankinSegments`)
 
-With thick bands, the two sets of lines cross each other and a weave effect is produced using a two-pass draw:
+With thick bands, each tile edge radiates a **+ band** (its left ray) and a **− band** (its right ray); each band is a ribbon bounded by its `bplus`/`bminus` boundary lines. Bands weave by alternating over/under at successive ribbon crossings, decided **per crossing** along each band's travel:
 
-- **`overSegs`** — the `bplus` (outer band) lines, drawn second (on top).
-- **`underSegs`** — the `bminus` (inner band) lines, drawn first (underneath), with a gap cut out wherever they pass behind a `bplus` line.
+- Crossings between bands of different strands are found with `bandCrossParam()` and sorted along each band by a representative `t`. (The two bands of one strand join at the star point — a bend in the ribbon, not a crossing — so they are never woven against each other.)
+- A **+ band** is *over* at its even-numbered crossings (0th, 2nd, …); since its first crossing is the − band of its own edge, + always occludes − at the shared edge. A **− band** is *over* at its odd-numbered crossings, so the two rules agree wherever the geometry alternates cleanly.
+- When both bands at a crossing claim the same state, the + band wins over the − band; between same-sign bands the first wins.
+- The under band at each crossing gets a gap cut over the span where it passes behind the other band's ribbon (entry to exit through both boundary lines, plus an `extraGap` margin), via `mergeIntervals()` + `pushWithGaps()`.
 
-The gap is computed by `bandCrossParam(bm.origin, bm.end, bp.origin, bp.end)`, which returns the `t` parameter (along the `bminus` segment) at which it crosses each `bplus` segment. When at least two crossing `t` values are found, `pushWithBandGap()` removes the occluded span (plus an `extraGap` margin) from the under-segment.
+Segments that received gaps are returned in `underSegs` (drawn first); untouched segments in `overSegs`.
 
-**Parallel-ray special case:** When two adjacent edge rays are exactly parallel, `rayIntersect()` returns `null` (denominator `< 1e-10`) and the code falls back to `rayExitPolygon()`. Likewise, `bandCrossParam()` returns `null` for parallel band segments — meaning no crossing `t` is found and the under-segment is pushed whole (no gap), which breaks the weave appearance. This is the known bug with thick motifs at parallel-ray angles.
+**Parallel-ray special case:** When two adjacent edge rays are exactly parallel, `rayIntersect()` returns `null` (denominator `< 1e-10`) and the code falls back to `rayExitPolygon()`. Likewise, `bandCrossParam()` returns `[]` for parallel non-collinear band segments — meaning no crossing is found and the bands are not woven there, which breaks the weave appearance. This is the known bug with thick motifs at parallel-ray angles.
 
 ### 3. Parquet deformation
 
