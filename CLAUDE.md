@@ -51,6 +51,10 @@ Segments that received gaps are returned in `underSegs` (drawn first); untouched
 
 **Parallel-ray special case:** When two adjacent edge rays are exactly parallel, `rayIntersect()` returns `null` (denominator `< 1e-10`) and the code falls back to `rayExitPolygon()`. Likewise, `bandCrossParam()` returns `[]` for parallel non-collinear band segments — meaning no crossing is found and the bands are not woven there, which breaks the weave appearance. This is the known bug with thick motifs at parallel-ray angles.
 
+#### Motif caching (congruent tiles)
+
+When `parquetDirection === 'none'`, θ is spatially constant and every motif quantity scales with edge length, so a tile's motif is equivariant under rotation + translation. `getHankinSegments` exploits this: each tile is mapped to a canonical frame (vertex 0 at the origin, edge 0→1 along +x), the per-tile computation (`computeTileSegments`) runs once per distinct canonical shape, and the cached segments are stamped onto every congruent tile through its own rigid transform. The cache key is the canonical vertex list quantised to 0.01 px — a near-miss only costs a redundant recompute, never a wrong reuse — and the whole cache is cleared whenever any motif parameter (θ, delta, thick, overlap, overlapGap, bandWidth, skip) changes. Reflected tiles hash to different keys, as required since the motif is chiral. Any spatially varying θ mode bypasses the cache entirely.
+
 ### 3. Parquet deformation
 
 `buildThetaAt(shapes, ...)` returns a `(x, y) => theta` function that maps canvas position to a local θ value, producing a smooth variation across the pattern. Modes:

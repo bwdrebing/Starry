@@ -240,149 +240,219 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   return () => theta
 }
 
+// Computes the motif segments for one tile. `vertices` must be in clockwise
+// winding. Plain segments are pushed into outOver; segments that had weave
+// gaps cut into them are pushed into outUnder (drawn first).
+function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver) {
+  const n = vertices.length
+
+  // skip only activates for polygons with enough sides to avoid degenerate results
+  const effectiveSkip = n >= 6 ? skip : 0
+
+  const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
+
+  // Star point for each pair i (shared by all band variants of that pair)
+  const starPts = allEdgeRays.map(edges =>
+    Array.from({ length: n }, (_, i) => {
+      const j = (i + 1 + effectiveSkip) % n
+      const rayA = edges[i].left, rayB = edges[j].right
+      const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
+      const ptInside = pt && pointInPolygon(pt, vertices)
+      return ptInside
+        ? pt
+        : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
+    })
+  )
+
+  // One strand per pair i. Each strand owns 2 segs (non-thick) or 4 segs (thick):
+  // the A-side (left ray of edge i) and B-side (right ray of edge jPair) for each band.
+  const strands = Array.from({ length: n }, (_, i) => {
+    const jPair = (i + 1 + effectiveSkip) % n
+    const segs = []
+    for (let di = 0; di < allEdgeRays.length; di++) {
+      const end = starPts[di][i]
+      segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
+      segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
+    }
+    return { segs, jPair }
+  })
+
+  const edgeLens = Array.from({ length: n }, (_, i) => {
+    const va = vertices[i], vb = vertices[(i + 1) % n]
+    return Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
+  })
+
+  // No weave: push all segments flat
+  if (!overlap || !thick) {
+    for (const strand of strands) {
+      for (const seg of strand.segs) outOver.push([seg.origin, seg.end])
+    }
+    return
+  }
+
+  // ── Weave rendering ────────────────────────────────────────────────────────
+
+  // Step 1: split each strand into its two bands. The + band is the left ray
+  // of edge i; the − band is the right ray of edge jPair. Each band owns the
+  // segments of both bplus/bminus boundary lines of that ray.
+  const bands = []
+  for (let i = 0; i < n; i++) {
+    const { segs, jPair } = strands[i]
+    bands.push({ segs: segs.filter(s => s.isA),  plus: true,  strand: i, edgeLen: edgeLens[i] })
+    bands.push({ segs: segs.filter(s => !s.isA), plus: false, strand: i, edgeLen: edgeLens[jPair] })
+  }
+
+  // Step 2: find every ribbon crossing between bands of different strands.
+  // (The two bands of one strand join at the star point — that is a bend in
+  // the ribbon, not a crossing.) For each crossing record, per boundary
+  // segment of each band, the clamped t-values where it crosses the other
+  // band's boundary lines, plus a representative t for ordering along travel.
+  const crossTs = (segsA, segsB) => segsA.map(sa =>
+    segsB.flatMap(sb => bandCrossParam(sa.origin, sa.end, sb.origin, sb.end))
+         .filter(t => t > -1e-4 && t < 1 - 1e-6)
+         .map(t => Math.max(0, Math.min(1, t))))
+
+  const crossings = []
+  for (let x = 0; x < bands.length; x++) {
+    for (let y = x + 1; y < bands.length; y++) {
+      if (bands[x].strand === bands[y].strand) continue
+      const tsOnA = crossTs(bands[x].segs, bands[y].segs)
+      const tsOnB = crossTs(bands[y].segs, bands[x].segs)
+      const flatA = tsOnA.flat(), flatB = tsOnB.flat()
+      if (flatA.length === 0 || flatB.length === 0) continue
+      crossings.push({
+        a: x, b: y, tsOnA, tsOnB,
+        repA: flatA.reduce((s, t) => s + t, 0) / flatA.length,
+        repB: flatB.reduce((s, t) => s + t, 0) / flatB.length,
+      })
+    }
+  }
+
+  // Step 3: alternate over/under along each band. Sorted by distance from the
+  // band's origin, crossing k is "over" for a + band when k is even, and for
+  // a − band when k is odd — so at the shared-edge crossing (first for both)
+  // the + band sits on top of the − band, and the weave alternates from there.
+  for (let bi = 0; bi < bands.length; bi++) {
+    const mine = []
+    for (const c of crossings) {
+      if (c.a === bi)      mine.push({ c, rep: c.repA, side: 'a' })
+      else if (c.b === bi) mine.push({ c, rep: c.repB, side: 'b' })
+    }
+    mine.sort((p, q) => p.rep - q.rep)
+    mine.forEach((m, k) => {
+      const over = bands[bi].plus ? k % 2 === 0 : k % 2 === 1
+      if (m.side === 'a') m.c.aOver = over
+      else                m.c.bOver = over
+    })
+  }
+
+  // Step 4: cut a gap in whichever band is under at each crossing.
+  // When both bands claim the same state (non-alternating geometry), the
+  // + band wins over the − band; between same-sign bands the first wins.
+  const gaps = bands.map(b => b.segs.map(() => []))
+  for (const c of crossings) {
+    let aOver
+    if (c.aOver !== c.bOver) aOver = c.aOver
+    else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
+    else aOver = true
+    const underIdx = aOver ? c.b : c.a
+    const tsUnder  = aOver ? c.tsOnB : c.tsOnA
+    const under = bands[underIdx]
+    tsUnder.forEach((ts, si2) => {
+      if (ts.length === 0) return
+      const seg = under.segs[si2]
+      const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
+      const extraG = sl > 1e-8 ? (overlapGap * under.edgeLen) / sl : 0
+      // One contiguous gap: entry to exit through the over band's ribbon
+      gaps[underIdx][si2].push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+    })
+  }
+
+  // Step 5: push segments. Gapped segments go to outUnder (drawn first),
+  // untouched ones to outOver.
+  for (let bi = 0; bi < bands.length; bi++) {
+    bands[bi].segs.forEach((seg, si2) => {
+      const intervals = gaps[bi][si2]
+      if (intervals.length === 0) outOver.push([seg.origin, seg.end])
+      else pushWithGaps(outUnder, seg.origin, seg.end, mergeIntervals(intervals))
+    })
+  }
+}
+
+// ── Motif caching ────────────────────────────────────────────────────────────
+// When θ is spatially constant (no parquet deformation), every offset in the
+// motif scales with edge length and the weave is decided by intra-tile geometry
+// alone, so a tile's motif is equivariant under rotation + translation.
+// Congruent tiles therefore share one computation: each tile is mapped to a
+// canonical frame (vertex 0 at the origin, edge 0→1 along +x), the motif is
+// computed once per distinct canonical shape, and the cached segments are
+// stamped back through each tile's own rigid transform.
+
+const MOTIF_CACHE_MAX = 4096
+const motifCache = { params: null, map: new Map() }
+
+// Rigid transform of a clockwise polygon into the canonical frame. The cache
+// key quantises canonical vertices to 0.01 px: congruent tiles collide, and a
+// near-miss at a rounding boundary causes a redundant recompute, never a
+// wrong reuse. Reflected tiles get distinct keys, which is required — the
+// motif is not mirror-symmetric in general.
+function canonicalize(vertices) {
+  const [ox, oy] = vertices[0]
+  const angle = Math.atan2(vertices[1][1] - oy, vertices[1][0] - ox)
+  const c = Math.cos(angle), s = Math.sin(angle)
+  const canon = vertices.map(([x, y]) => {
+    const dx = x - ox, dy = y - oy
+    return [dx * c + dy * s, dy * c - dx * s]
+  })
+  const key = canon.map(([x, y]) => `${Math.round(x * 100)},${Math.round(y * 100)}`).join(';')
+  return { canon, key, ox, oy, c, s }
+}
+
+// Maps cached segments out of the canonical frame: rotate back, then translate.
+function stampSegments(out, segs, c, s, ox, oy) {
+  for (const [[x1, y1], [x2, y2]] of segs) {
+    out.push([
+      [x1 * c - y1 * s + ox, x1 * s + y1 * c + oy],
+      [x2 * c - y2 * s + ox, x2 * s + y2 * c + oy],
+    ])
+  }
+}
+
 export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
   const allUnder = [], allOver = []
 
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
 
-  for (let si = 0; si < shapes.length; si++) {
-    const shape = shapes[si]
+  // With spatially varying θ a tile's motif depends on its position, so
+  // congruent tiles cannot share results and the cache is bypassed.
+  const cacheable = parquetDirection === 'none'
+  if (cacheable) {
+    const params = `${theta}|${delta}|${thick}|${overlap}|${overlapGap}|${bandWidth}|${skip}`
+    if (motifCache.params !== params) {
+      motifCache.params = params
+      motifCache.map.clear()
+    }
+  }
+
+  for (const shape of shapes) {
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
     const vertices = ensureClockwise(raw)
-    const n = vertices.length
 
-    // skip only activates for polygons with enough sides to avoid degenerate results
-    const effectiveSkip = n >= 6 ? skip : 0
-
-    const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
-
-    // Star point for each pair i (shared by all band variants of that pair)
-    const starPts = allEdgeRays.map(edges =>
-      Array.from({ length: n }, (_, i) => {
-        const j = (i + 1 + effectiveSkip) % n
-        const rayA = edges[i].left, rayB = edges[j].right
-        const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
-        const ptInside = pt && pointInPolygon(pt, vertices)
-        return ptInside
-          ? pt
-          : [(rayA.origin[0] + rayB.origin[0]) / 2, (rayA.origin[1] + rayB.origin[1]) / 2]
-      })
-    )
-
-    // One strand per pair i. Each strand owns 2 segs (non-thick) or 4 segs (thick):
-    // the A-side (left ray of edge i) and B-side (right ray of edge jPair) for each band.
-    const strands = Array.from({ length: n }, (_, i) => {
-      const jPair = (i + 1 + effectiveSkip) % n
-      const segs = []
-      for (let di = 0; di < allEdgeRays.length; di++) {
-        const end = starPts[di][i]
-        segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
-        segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
-      }
-      return { segs, jPair }
-    })
-
-    const edgeLens = Array.from({ length: n }, (_, i) => {
-      const va = vertices[i], vb = vertices[(i + 1) % n]
-      return Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
-    })
-
-    // No weave: push all segments flat
-    if (!overlap || !thick) {
-      for (const strand of strands) {
-        for (const seg of strand.segs) allOver.push([seg.origin, seg.end])
-      }
+    if (!cacheable) {
+      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, allUnder, allOver)
       continue
     }
 
-    // ── Weave rendering ────────────────────────────────────────────────────────
-
-    // Step 1: split each strand into its two bands. The + band is the left ray
-    // of edge i; the − band is the right ray of edge jPair. Each band owns the
-    // segments of both bplus/bminus boundary lines of that ray.
-    const bands = []
-    for (let i = 0; i < n; i++) {
-      const { segs, jPair } = strands[i]
-      bands.push({ segs: segs.filter(s => s.isA),  plus: true,  strand: i, edgeLen: edgeLens[i] })
-      bands.push({ segs: segs.filter(s => !s.isA), plus: false, strand: i, edgeLen: edgeLens[jPair] })
+    const { canon, key, ox, oy, c, s } = canonicalize(vertices)
+    let entry = motifCache.map.get(key)
+    if (!entry) {
+      entry = { under: [], over: [] }
+      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, entry.under, entry.over)
+      if (motifCache.map.size < MOTIF_CACHE_MAX) motifCache.map.set(key, entry)
     }
-
-    // Step 2: find every ribbon crossing between bands of different strands.
-    // (The two bands of one strand join at the star point — that is a bend in
-    // the ribbon, not a crossing.) For each crossing record, per boundary
-    // segment of each band, the clamped t-values where it crosses the other
-    // band's boundary lines, plus a representative t for ordering along travel.
-    const crossTs = (segsA, segsB) => segsA.map(sa =>
-      segsB.flatMap(sb => bandCrossParam(sa.origin, sa.end, sb.origin, sb.end))
-           .filter(t => t > -1e-4 && t < 1 - 1e-6)
-           .map(t => Math.max(0, Math.min(1, t))))
-
-    const crossings = []
-    for (let x = 0; x < bands.length; x++) {
-      for (let y = x + 1; y < bands.length; y++) {
-        if (bands[x].strand === bands[y].strand) continue
-        const tsOnA = crossTs(bands[x].segs, bands[y].segs)
-        const tsOnB = crossTs(bands[y].segs, bands[x].segs)
-        const flatA = tsOnA.flat(), flatB = tsOnB.flat()
-        if (flatA.length === 0 || flatB.length === 0) continue
-        crossings.push({
-          a: x, b: y, tsOnA, tsOnB,
-          repA: flatA.reduce((s, t) => s + t, 0) / flatA.length,
-          repB: flatB.reduce((s, t) => s + t, 0) / flatB.length,
-        })
-      }
-    }
-
-    // Step 3: alternate over/under along each band. Sorted by distance from the
-    // band's origin, crossing k is "over" for a + band when k is even, and for
-    // a − band when k is odd — so at the shared-edge crossing (first for both)
-    // the + band sits on top of the − band, and the weave alternates from there.
-    for (let bi = 0; bi < bands.length; bi++) {
-      const mine = []
-      for (const c of crossings) {
-        if (c.a === bi)      mine.push({ c, rep: c.repA, side: 'a' })
-        else if (c.b === bi) mine.push({ c, rep: c.repB, side: 'b' })
-      }
-      mine.sort((p, q) => p.rep - q.rep)
-      mine.forEach((m, k) => {
-        const over = bands[bi].plus ? k % 2 === 0 : k % 2 === 1
-        if (m.side === 'a') m.c.aOver = over
-        else                m.c.bOver = over
-      })
-    }
-
-    // Step 4: cut a gap in whichever band is under at each crossing.
-    // When both bands claim the same state (non-alternating geometry), the
-    // + band wins over the − band; between same-sign bands the first wins.
-    const gaps = bands.map(b => b.segs.map(() => []))
-    for (const c of crossings) {
-      let aOver
-      if (c.aOver !== c.bOver) aOver = c.aOver
-      else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
-      else aOver = true
-      const underIdx = aOver ? c.b : c.a
-      const tsUnder  = aOver ? c.tsOnB : c.tsOnA
-      const under = bands[underIdx]
-      tsUnder.forEach((ts, si2) => {
-        if (ts.length === 0) return
-        const seg = under.segs[si2]
-        const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
-        const extraG = sl > 1e-8 ? (overlapGap * under.edgeLen) / sl : 0
-        // One contiguous gap: entry to exit through the over band's ribbon
-        gaps[underIdx][si2].push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
-      })
-    }
-
-    // Step 5: push segments. Gapped segments go to allUnder (drawn first),
-    // untouched ones to allOver.
-    for (let bi = 0; bi < bands.length; bi++) {
-      bands[bi].segs.forEach((seg, si2) => {
-        const intervals = gaps[bi][si2]
-        if (intervals.length === 0) allOver.push([seg.origin, seg.end])
-        else pushWithGaps(allUnder, seg.origin, seg.end, mergeIntervals(intervals))
-      })
-    }
+    stampSegments(allUnder, entry.under, c, s, ox, oy)
+    stampSegments(allOver, entry.over, c, s, ox, oy)
   }
 
   return { underSegs: allUnder, overSegs: allOver }
