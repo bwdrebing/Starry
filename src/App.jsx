@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import StarryCanvas from './StarryCanvas'
 import AntwerpCanvas from './AntwerpCanvas'
 import TilingThumbnail from './TilingThumbnail'
+import HankinHelp from './HankinHelp'
 import { VERTEX_COLORS } from './truchet'
 import { SQUARE_VERTEX_COLORS } from './squareTruchet'
 import './App.css'
@@ -99,6 +100,7 @@ export default function App() {
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
   const [activeTab, setActiveTab] = useState('motif')
+  const [showHelp, setShowHelp] = useState(false)
   const [tilingScrolled, setTilingScrolled] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
   const selectedTilingRef = useRef(null)
@@ -269,6 +271,12 @@ export default function App() {
           selectedTileIdx={selectedTileIdx}
         />
       </div>
+
+      <button className="help-btn" onClick={() => setShowHelp(true)}
+        aria-label="How Hankin motifs work" title="How Hankin motifs work">
+        ?
+      </button>
+      {showHelp && <HankinHelp onClose={() => setShowHelp(false)} />}
 
       {/* ── 3-tab bottom drawer ── */}
       <div className="drawer">

@@ -26,9 +26,13 @@ async function canvasSnapshot(page) {
 }
 
 // Set a range slider value and fire the React input event.
+// The value must be written through the native prototype setter: assigning
+// el.value directly goes through React's value-tracking descriptor, which then
+// dedupes the input event and never calls the component's onChange.
 async function setSlider(page, id, value) {
   await page.locator(id).evaluate((el, v) => {
-    el.value = String(v)
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(el, String(v))
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }, value)
   await page.waitForTimeout(80)
@@ -185,5 +189,39 @@ test.describe('canvas rendering', () => {
     await page.locator('.prop-row').filter({ hasText: 'Density' }).getByText('2', { exact: true }).click()
     await page.waitForTimeout(80)
     expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-theta-36-density-2.png')
+  })
+})
+
+test.describe('help overlay', () => {
+  // Returns the demo canvas bitmap as a base64 string (also asserts it drew something).
+  async function demoBitmap(page, testId) {
+    return page.locator(`[data-testid="${testId}"]`).evaluate(el => el.toDataURL('image/png'))
+  }
+
+  test('help button opens overlay with rendered demos', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await page.locator('.help-btn').click()
+    await expect(page.locator('.help-panel')).toBeVisible()
+
+    // Each demo canvas must have actually drawn something (non-transparent pixels)
+    for (const id of ['help-demo-rays', 'help-demo-stars', 'help-demo-weave']) {
+      const drawn = await page.locator(`[data-testid="${id}"]`).evaluate(el => {
+        const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height)
+        for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true
+        return false
+      })
+      expect(drawn, `${id} should have rendered`).toBe(true)
+    }
+
+    // Demo controls are live: changing the angle slider redraws the demo
+    const before = await demoBitmap(page, 'help-demo-rays')
+    await setSlider(page, '#help-rays-angle', 20)
+    const after = await demoBitmap(page, 'help-demo-rays')
+    expect(after).not.toBe(before)
+
+    // Close via the header button
+    await page.locator('.help-close').click()
+    await expect(page.locator('.help-panel')).toHaveCount(0)
   })
 })

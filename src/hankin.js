@@ -33,7 +33,7 @@ function centroid(vertices) {
 }
 
 // Returns [t, s, point] for the intersection of ray (o1+t*d1) and (o2+s*d2), or null.
-function rayIntersect(o1, d1, o2, d2) {
+export function rayIntersect(o1, d1, o2, d2) {
   const denom = cross2D(d1, d2)
   if (Math.abs(denom) < 1e-10) return null
   const diff = sub2D(o2, o1)
@@ -43,7 +43,7 @@ function rayIntersect(o1, d1, o2, d2) {
   return [t, s, add2D(o1, scale2D(d1, t))]
 }
 
-function pointInPolygon([px, py], vertices) {
+export function pointInPolygon([px, py], vertices) {
   const n = vertices.length
   let inside = false
   for (let i = 0, j = n - 1; i < n; j = i++) {
@@ -72,7 +72,7 @@ function rayExitPolygon(origin, dir, vertices) {
 
 // Returns per-edge ray objects for each band variant.
 // thick=false → one variant; thick=true → [bplus (outer), bminus (inner)].
-function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) {
+export function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) {
   const n = vertices.length
   const c = centroid(vertices)
 
@@ -106,7 +106,7 @@ function makeEdgeRays(vertices, thetaAt, delta, thick = false, bandWidth = 0.2) 
   ]
 }
 
-function ensureClockwise(vertices) {
+export function ensureClockwise(vertices) {
   let area = 0
   const n = vertices.length
   for (let i = 0; i < n; i++) {
