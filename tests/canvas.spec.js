@@ -163,9 +163,9 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('girih-dhb-default.png')
   })
 
-  // θ = 36° is the canonical girih angle (straps cross tile edges at 54°),
-  // where the decagon motif becomes the classic {10/3} ten-pointed star.
-  test('girih decagons-bowties — theta 36°', async ({ page }) => {
+  // θ = 36° is the canonical girih angle (straps cross tile edges at 54°);
+  // at Density 2 the decagon motif becomes the classic {10/3} ten-pointed star.
+  test('girih decagons-bowties — theta 36°, density 2', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
     await openTab(page, 0) // Tiling tab
@@ -173,6 +173,8 @@ test.describe('canvas rendering', () => {
     await waitForRender(page)
     await openTab(page, 2) // Style tab
     await setSlider(page, '#theta-slider', 36)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-theta-36.png')
+    await page.locator('.prop-row').filter({ hasText: 'Density' }).getByText('2', { exact: true }).click()
+    await page.waitForTimeout(80)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-theta-36-density-2.png')
   })
 })

@@ -137,10 +137,7 @@ export function generateGirih(width, height, variant = 'dhb') {
         const verts = t.verts.map(([x, y]) => [x * edge + ox, y * edge + oy])
         const [cx, cy] = centroid(verts)
         if (cx < -halfW - pad || cx > halfW + pad || cy < -halfH - pad || cy > halfH + pad) continue
-        // Decagons pair edge i with edge i+3 (skipOffset 2) so the motif is
-        // the classic girih {10/3} ten-pointed star; hexagons and bow ties
-        // use adjacent-edge pairing, as in the historic patterns.
-        shapes.push([verts, { girih: true, kind: t.kind, skipOffset: t.kind === 'decagon' ? 2 : 0 }])
+        shapes.push([verts, { girih: true, kind: t.kind }])
       }
     }
   }

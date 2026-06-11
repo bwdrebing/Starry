@@ -26,7 +26,7 @@ Two tiling systems are supported:
 - Periodic patterns of the classic Persian girih tiles (regular decagon, elongated hexagon, bow tie), all edges equal, all angles multiples of 36°.
 - Tiles are built by a turtle walk over interior-angle lists and assembled with rigid edge-to-edge gluing; the resulting unit cells are replicated over an oblique lattice.
 - Two variants: `'db'` (decagons linked by bow-tie bridges; one decagon + one bow tie per cell) and `'dhb'` (staggered decagon rows with upright hexagons and mirrored bow-tie pairs; decagon + hexagon + 2 bow ties per cell). Config strings are `girih-db` / `girih-dhb`.
-- Tile meta is `{ girih: true, kind, skipOffset }`. `skipOffset: 2` on decagons makes the Hankin motif pair edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star; `getHankinSegments` adds each tile's `skipOffset` to the global `skip` (and includes it in the motif cache key). The canonical girih angle is θ = 36° (straps cross edges at 54°).
+- Tile meta is `{ girih: true, kind }`. Girih tiles follow the global Density (skip) setting like any other polygon: at Density 2 the decagon pairs edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star. The canonical girih angle is θ = 36° (straps cross edges at 54°).
 - Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex and gets special motif handling (see edge pairing below).
 
 ### 2. Hankin Motif (`src/hankin.js`)

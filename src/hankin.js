@@ -480,21 +480,17 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const raw = shape[0]
     if (!raw || raw.length < 3) continue
     const vertices = ensureClockwise(raw)
-    // Tiles may request extra ray-pairing reach (e.g. girih decagons pair
-    // edge i with edge i+3 to draw the classic {10/3} star).
-    const tileSkip = skip + (shape[1]?.skipOffset || 0)
 
     if (!cacheable) {
-      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, tileSkip, allUnder, allOver)
+      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, allUnder, allOver)
       continue
     }
 
-    const { canon, key: shapeKey, ox, oy, c, s } = canonicalize(vertices)
-    const key = `${shapeKey}|${tileSkip}`
+    const { canon, key, ox, oy, c, s } = canonicalize(vertices)
     let entry = motifCache.map.get(key)
     if (!entry) {
       entry = { under: [], over: [] }
-      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, tileSkip, entry.under, entry.over)
+      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, entry.under, entry.over)
       if (motifCache.map.size < MOTIF_CACHE_MAX) motifCache.map.set(key, entry)
     }
     stampSegments(allUnder, entry.under, c, s, ox, oy)
@@ -556,8 +552,7 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
     if (!raw || raw.length < 3) continue
     const vertices = ensureClockwise(raw)
     const n = vertices.length
-    const tileSkip = skip + (shape[1]?.skipOffset || 0)
-    const pairWith = buildPairMap(vertices, tileSkip)
+    const pairWith = buildPairMap(vertices, skip)
     const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, bandWidth)
     const c = centroid(vertices)
 
@@ -656,8 +651,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const vertices = ensureClockwise(raw)
       const n = vertices.length
 
-      const tileSkip = skip + (shape[1]?.skipOffset || 0)
-      const pairWith = buildPairMap(vertices, tileSkip)
+      const pairWith = buildPairMap(vertices, skip)
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
       for (let di = 0; di < allEdgeRays.length; di++) {
         const edges = allEdgeRays[di]
