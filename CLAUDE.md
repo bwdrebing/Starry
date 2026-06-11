@@ -20,7 +20,15 @@ Two tiling systems are supported:
 - Uses **de Bruijn's multigrid method**: draw *n* families of equally-spaced parallel lines at angles `k·2π/n`, then find every pairwise intersection and project nearby sample points into the dual lattice to obtain rhombus vertices.
 - `generateMultigrid(width, height, symmetry, steps)` returns `shapes` in the same format as Antwerp.
 - Symmetry 5 → Penrose P3; 7 → heptagonal; 8 → Ammann-Beenker.
-- Irrational (golden-ratio-spaced) per-family offsets prevent three lines from meeting at a point, which would produce degenerate dual tiles.
+- All line families share one equal offset (`1/symmetry`), which makes the multigrid invariant under rotation by `2π/n` — the dual tiling therefore has exact n-fold rotational symmetry about the canvas centre (for n = 5 this is the classic Penrose "sun" pattern; the offset sum satisfies de Bruijn's Σγ ≡ 0 condition).
+
+**Girih tilings** (`src/girih.js`)
+- Periodic patterns of the classic Persian girih tiles (regular decagon, elongated hexagon, bow tie), all edges equal, all angles multiples of 36°.
+- Tiles are built by a turtle walk over interior-angle lists and assembled with rigid edge-to-edge gluing; the resulting unit cells are replicated over an oblique lattice.
+- Two periodic variants: `'db'` (decagons linked by bow-tie bridges; one decagon + one bow tie per cell) and `'dhb'` (staggered decagon rows with upright hexagons and mirrored bow-tie pairs; decagon + hexagon + 2 bow ties per cell). Config strings are `girih-db` / `girih-dhb`.
+- Two radial **aperiodic** variants: `'rosette'` / `'wreath'` (configs `girih-rosette` / `girih-wreath`) grow a D10-symmetric patch outward from a central decagon, drawing on all five girih tiles (pentagon and rhombus included). `fillRadial` repeatedly fills the open vertex nearest the origin with the first tile corner (from a per-variant preference list) whose whole 20-element symmetry orbit fits without overlap, with a small backtracking budget. Global 10-fold symmetry makes the result necessarily non-periodic. Patches grow monotonically with radius, so they are memoised per variant and reused for smaller canvases.
+- Tile meta is `{ girih: true, kind }`. Girih tiles follow the global Density (skip) setting like any other polygon: at Density 2 the decagon pairs edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star, while hexagons and bow ties (cycles of 6 edges or fewer) keep their adjacent-edge knots at every Density. The canonical girih angle is θ = 36° (straps cross edges at 54°).
+- Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex and gets special motif handling (see edge pairing below).
 
 ### 2. Hankin Motif (`src/hankin.js`)
 
@@ -29,6 +37,10 @@ The core algorithm. For every polygon in the tiling:
 1. **Edge rays** — Each edge emits two rays angled inward at ±θ from the inward normal, offset along the edge by `delta·edgeLen/2`. The left ray of edge *i* pairs with the right ray of edge *i+1*.
 2. **Star points** — `rayIntersect()` finds where the paired rays meet. If they are parallel or diverge, `rayExitPolygon()` clips each ray to the polygon boundary instead.
 3. **Segments** — Each ray is drawn from its origin to its computed endpoint.
+
+#### Edge pairing (`buildPairMap`)
+
+Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip only activates for cycles with strictly more than 6 edges, so hexagons and smaller polygons always pair adjacent edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
 
 #### Thick mode
 
@@ -134,6 +146,7 @@ Run `npm run test:update` once to create the baseline, then `npm test` on subseq
 |---|---|
 | `src/hankin.js` | All motif geometry: ray construction, intersection, thick bands, painters algorithm |
 | `src/penrose.js` | Quasi-periodic tiling via de Bruijn multigrid |
+| `src/girih.js` | Periodic girih tilings (decagon / hexagon / bow tie) |
 | `src/AntwerpCanvas.jsx` | Canvas component, rAF loop, Antwerp tiling, SVG export |
 | `src/App.jsx` | Root component, all UI controls and state |
 | `src/StarryCanvas.jsx` | Decorative starfield background canvas |

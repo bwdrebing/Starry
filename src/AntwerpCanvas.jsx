@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
 import { generateMultigrid } from './penrose'
+import { generateGirih } from './girih'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
          subdivideTruchetShapes, canMergeTruchetShapes, mergeTruchetShapes } from './truchet'
 import { generateSquareTruchetTiling, drawSquareTruchetShapes, getSquareTruchetPaths,
@@ -24,6 +25,16 @@ const MULTIGRID_COLORS = [
   ['rgba(220,  60, 60,0.22)', 'rgba(230,  80, 80,0.85)'], // diff 3 — red
   ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'], // diff 4 — purple
 ]
+
+// Girih tiles coloured by kind (bow tie and hexagon both have 6 sides, so the
+// side-count palette cannot distinguish them).
+const GIRIH_COLORS = {
+  decagon: ['rgba(255,195, 40,0.24)', 'rgba(255,195, 40,0.90)'],  // gold
+  hexagon: ['rgba( 67,210,163,0.22)', 'rgba( 67,210,163,0.85)'],  // teal
+  bowtie:  ['rgba(220,  70, 60,0.22)', 'rgba(230,  90, 75,0.85)'], // red
+  pentagon: ['rgba( 72,149,239,0.22)', 'rgba( 72,149,239,0.85)'],  // blue
+  rhombus: ['rgba(167,  86,255,0.22)', 'rgba(167,  86,255,0.85)'], // purple
+}
 
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX
@@ -179,6 +190,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         if (!vertices || vertices.length < 3) continue
         let [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
         if (meta?.multigrid) [fill, stroke] = MULTIGRID_COLORS[meta.diff - 1] ?? DEFAULT_COLOR
+        if (meta?.girih) [fill, stroke] = GIRIH_COLORS[meta.kind] ?? DEFAULT_COLOR
         ctx.beginPath()
         ctx.moveTo(vertices[0][0], vertices[0][1])
         for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
@@ -365,6 +377,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     } else if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
       allShapesRef.current = generateMultigrid(W, H, sym)
+    } else if (configuration.startsWith('girih-')) {
+      allShapesRef.current = generateGirih(W, H, configuration.slice(6))
     } else {
       try {
         const data = toShapes({ configuration, width: W, height: H, shapeSize })

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { generateMultigrid } from './penrose'
+import { generateGirih } from './girih'
 import { generateTruchetTiling, drawTruchetShapes } from './truchet'
 
 const PALETTE = {
@@ -18,6 +19,14 @@ const MULTIGRID_COLORS = [
   ['rgba(220,  60, 60,0.22)', 'rgba(230,  80, 80,0.85)'],
   ['rgba(140,  60,220,0.22)', 'rgba(160,  80,230,0.85)'],
 ]
+
+const GIRIH_COLORS = {
+  decagon: ['rgba(255,195, 40,0.24)', 'rgba(255,195, 40,0.90)'],
+  hexagon: ['rgba( 67,210,163,0.22)', 'rgba( 67,210,163,0.85)'],
+  bowtie:  ['rgba(220,  70, 60,0.22)', 'rgba(230,  90, 75,0.85)'],
+  pentagon: ['rgba( 72,149,239,0.22)', 'rgba( 72,149,239,0.85)'],
+  rhombus: ['rgba(167,  86,255,0.22)', 'rgba(167,  86,255,0.85)'],
+}
 
 export default function TilingThumbnail({ configuration, size = 88 }) {
   const canvasRef = useRef(null)
@@ -46,7 +55,12 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
     let shapes = []
     if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
-      shapes = generateMultigrid(size, size, sym)
+      // The multigrid sizes its tiles for the full canvas, far too fine to
+      // read at thumbnail scale; generate for a larger virtual canvas so the
+      // thumbnail zooms in on the tiling's rotationally symmetric centre.
+      shapes = generateMultigrid(size * 4, size * 4, sym)
+    } else if (configuration.startsWith('girih-')) {
+      shapes = generateGirih(size, size, configuration.slice(6))
     } else {
       try {
         const data = toShapes({ configuration, width: size, height: size, shapeSize: 32 })
@@ -63,6 +77,7 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
       if (!vertices || vertices.length < 3) continue
       let [fill, stroke] = PALETTE[vertices.length] ?? DEFAULT_COLOR
       if (meta?.multigrid) [fill, stroke] = MULTIGRID_COLORS[meta.diff - 1] ?? DEFAULT_COLOR
+      if (meta?.girih) [fill, stroke] = GIRIH_COLORS[meta.kind] ?? DEFAULT_COLOR
       ctx.beginPath()
       ctx.moveTo(vertices[0][0], vertices[0][1])
       for (let i = 1; i < vertices.length; i++) ctx.lineTo(vertices[i][0], vertices[i][1])
