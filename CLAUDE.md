@@ -27,7 +27,7 @@ Two tiling systems are supported:
 - Tiles are built by a turtle walk over interior-angle lists and assembled with rigid edge-to-edge gluing; the resulting unit cells are replicated over an oblique lattice.
 - Two variants: `'db'` (decagons linked by bow-tie bridges; one decagon + one bow tie per cell) and `'dhb'` (staggered decagon rows with upright hexagons and mirrored bow-tie pairs; decagon + hexagon + 2 bow ties per cell). Config strings are `girih-db` / `girih-dhb`.
 - Tile meta is `{ girih: true, kind, skipOffset }`. `skipOffset: 2` on decagons makes the Hankin motif pair edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star; `getHankinSegments` adds each tile's `skipOffset` to the global `skip` (and includes it in the motif cache key). The canonical girih angle is θ = 36° (straps cross edges at 54°).
-- Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex, which the motif code tolerates (centroid-based inward normals, ray-exit fallback).
+- Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex and gets special motif handling (see edge pairing below).
 
 ### 2. Hankin Motif (`src/hankin.js`)
 
@@ -36,6 +36,10 @@ The core algorithm. For every polygon in the tiling:
 1. **Edge rays** — Each edge emits two rays angled inward at ±θ from the inward normal, offset along the edge by `delta·edgeLen/2`. The left ray of edge *i* pairs with the right ray of edge *i+1*.
 2. **Star points** — `rayIntersect()` finds where the paired rays meet. If they are parallel or diverge, `rayExitPolygon()` clips each ray to the polygon boundary instead.
 3. **Segments** — Each ray is drawn from its origin to its computed endpoint.
+
+#### Edge pairing (`buildPairMap`)
+
+Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip suppressed for cycles shorter than 6 edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
 
 #### Thick mode
 

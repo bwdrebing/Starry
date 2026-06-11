@@ -117,6 +117,49 @@ function ensureClockwise(vertices) {
   return area > 0 ? [...vertices].reverse() : vertices
 }
 
+// Maps each edge i to the partner edge whose right ray pairs with edge i's
+// left ray. Convex tiles pair around a single cycle: i → (i+1+skip) % n.
+// Non-convex tiles with exactly two reflex vertices (girih bow ties) are
+// split at the reflex vertices into two edge chains, and each chain pairs as
+// its own closed cycle — the chain-closing pair meets across the waist — so
+// the motif stays inside each lobe instead of straddling the pinch.
+// `skip` is suppressed within cycles shorter than 6 edges, matching the
+// existing rule for small polygons.
+function buildPairMap(vertices, skip) {
+  const n = vertices.length
+  let area = 0
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = vertices[i]
+    const [bx, by] = vertices[(i + 1) % n]
+    area += ax * by - bx * ay
+  }
+  const wind = area >= 0 ? 1 : -1
+
+  const reflex = []
+  for (let i = 0; i < n; i++) {
+    const p = vertices[(i - 1 + n) % n], v = vertices[i], q = vertices[(i + 1) % n]
+    const cr = (v[0] - p[0]) * (q[1] - v[1]) - (v[1] - p[1]) * (q[0] - v[0])
+    if (cr * wind < -1e-9) reflex.push(i)
+  }
+
+  const pairWith = new Array(n)
+  if (reflex.length === 2) {
+    // edge k runs v[k] → v[k+1]; the chain starting at reflex vertex r owns
+    // edges r, r+1, … up to (but not including) the other reflex vertex
+    const chains = [[], []]
+    for (let k = reflex[0]; k !== reflex[1]; k = (k + 1) % n) chains[0].push(k)
+    for (let k = reflex[1]; k !== reflex[0]; k = (k + 1) % n) chains[1].push(k)
+    for (const chain of chains) {
+      const cs = chain.length >= 6 ? skip : 0
+      chain.forEach((e, idx) => { pairWith[e] = chain[(idx + 1 + cs) % chain.length] })
+    }
+  } else {
+    const s = n >= 6 ? skip : 0
+    for (let i = 0; i < n; i++) pairWith[i] = (i + 1 + s) % n
+  }
+  return pairWith
+}
+
 // Returns t-values on segment a→b where it is crossed by segment c→d.
 // Normal case: one t (crossing within c→d's extent).
 // Collinear case: two t values bracketing the overlap.
@@ -246,15 +289,14 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver) {
   const n = vertices.length
 
-  // skip only activates for polygons with enough sides to avoid degenerate results
-  const effectiveSkip = n >= 6 ? skip : 0
+  const pairWith = buildPairMap(vertices, skip)
 
   const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
 
   // Star point for each pair i (shared by all band variants of that pair)
   const starPts = allEdgeRays.map(edges =>
     Array.from({ length: n }, (_, i) => {
-      const j = (i + 1 + effectiveSkip) % n
+      const j = pairWith[i]
       const rayA = edges[i].left, rayB = edges[j].right
       const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
       const ptInside = pt && pointInPolygon(pt, vertices)
@@ -267,7 +309,7 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
   // One strand per pair i. Each strand owns 2 segs (non-thick) or 4 segs (thick):
   // the A-side (left ray of edge i) and B-side (right ray of edge jPair) for each band.
   const strands = Array.from({ length: n }, (_, i) => {
-    const jPair = (i + 1 + effectiveSkip) % n
+    const jPair = pairWith[i]
     const segs = []
     for (let di = 0; di < allEdgeRays.length; di++) {
       const end = starPts[di][i]
@@ -515,12 +557,12 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
     const vertices = ensureClockwise(raw)
     const n = vertices.length
     const tileSkip = skip + (shape[1]?.skipOffset || 0)
-    const effectiveSkip = n >= 6 ? tileSkip : 0
+    const pairWith = buildPairMap(vertices, tileSkip)
     const [edges] = makeEdgeRays(vertices, thetaAt, delta, false, bandWidth)
     const c = centroid(vertices)
 
     const starPts = Array.from({ length: n }, (_, i) => {
-      const j = (i + 1 + effectiveSkip) % n
+      const j = pairWith[i]
       const rayA = edges[i].left, rayB = edges[j].right
       const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
       return (pt && pointInPolygon(pt, vertices))
@@ -615,12 +657,12 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
       const n = vertices.length
 
       const tileSkip = skip + (shape[1]?.skipOffset || 0)
-      const effectiveSkip = n >= 6 ? tileSkip : 0
+      const pairWith = buildPairMap(vertices, tileSkip)
       const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
       for (let di = 0; di < allEdgeRays.length; di++) {
         const edges = allEdgeRays[di]
         for (let i = 0; i < n; i++) {
-          const j = (i + 1 + effectiveSkip) % n
+          const j = pairWith[i]
           const rayA = edges[i].left, rayB = edges[j].right
           const pt = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)?.[2]
           const ptInside = pt && pointInPolygon(pt, vertices)
