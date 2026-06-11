@@ -123,8 +123,8 @@ function ensureClockwise(vertices) {
 // split at the reflex vertices into two edge chains, and each chain pairs as
 // its own closed cycle — the chain-closing pair meets across the waist — so
 // the motif stays inside each lobe instead of straddling the pinch.
-// `skip` is suppressed within cycles shorter than 6 edges, matching the
-// existing rule for small polygons.
+// `skip` only activates for cycles with strictly more than 6 edges; smaller
+// polygons keep their adjacent-edge motif.
 function buildPairMap(vertices, skip) {
   const n = vertices.length
   let area = 0
@@ -150,11 +150,11 @@ function buildPairMap(vertices, skip) {
     for (let k = reflex[0]; k !== reflex[1]; k = (k + 1) % n) chains[0].push(k)
     for (let k = reflex[1]; k !== reflex[0]; k = (k + 1) % n) chains[1].push(k)
     for (const chain of chains) {
-      const cs = chain.length >= 6 ? skip : 0
+      const cs = chain.length > 6 ? skip : 0
       chain.forEach((e, idx) => { pairWith[e] = chain[(idx + 1 + cs) % chain.length] })
     }
   } else {
-    const s = n >= 6 ? skip : 0
+    const s = n > 6 ? skip : 0
     for (let i = 0; i < n; i++) pairWith[i] = (i + 1 + s) % n
   }
   return pairWith

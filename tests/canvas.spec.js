@@ -101,21 +101,21 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-parquet-ltr.png')
   })
 
-  // ── Hexagonal tiling ──────────────────────────────────────────────────────
+  // ── Truncated hexagonal tiling ────────────────────────────────────────────
 
-  // Density (skip) only affects polygons with ≥6 sides, so the weave-interleaving
-  // tests use the hexagonal tiling rather than the (triangular) default.
-  test('hexagonal — thick bands, density 1', async ({ page }) => {
+  // Density (skip) only affects polygons with more than 6 sides, so the
+  // weave-interleaving tests use a tiling with 12-gons.
+  test('truncated hexagonal — thick bands, density 1', async ({ page }) => {
     await page.goto('/')
     await waitForRender(page)
     await openTab(page, 0) // Tiling tab
-    await page.locator('.tiling-thumb-item[title="1-Uniform: 6³ — Hexagonal"]').click()
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 3.12² — Truncated Hexagonal"]').click()
     await waitForRender(page)
     await openTab(page, 2) // Style tab
     await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
     await page.locator('.prop-row').filter({ hasText: 'Density' }).getByText('1', { exact: true }).click()
     await page.waitForTimeout(80)
-    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-thick-density-1.png')
+    expect(await canvasSnapshot(page)).toMatchSnapshot('trunc-hex-thick-density-1.png')
   })
 
   // ── Square tiling ─────────────────────────────────────────────────────────

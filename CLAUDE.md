@@ -26,7 +26,7 @@ Two tiling systems are supported:
 - Periodic patterns of the classic Persian girih tiles (regular decagon, elongated hexagon, bow tie), all edges equal, all angles multiples of 36°.
 - Tiles are built by a turtle walk over interior-angle lists and assembled with rigid edge-to-edge gluing; the resulting unit cells are replicated over an oblique lattice.
 - Two variants: `'db'` (decagons linked by bow-tie bridges; one decagon + one bow tie per cell) and `'dhb'` (staggered decagon rows with upright hexagons and mirrored bow-tie pairs; decagon + hexagon + 2 bow ties per cell). Config strings are `girih-db` / `girih-dhb`.
-- Tile meta is `{ girih: true, kind }`. Girih tiles follow the global Density (skip) setting like any other polygon: at Density 2 the decagon pairs edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star. The canonical girih angle is θ = 36° (straps cross edges at 54°).
+- Tile meta is `{ girih: true, kind }`. Girih tiles follow the global Density (skip) setting like any other polygon: at Density 2 the decagon pairs edge *i* with edge *i+3*, producing the classic {10/3} ten-pointed star, while hexagons and bow ties (cycles of 6 edges or fewer) keep their adjacent-edge knots at every Density. The canonical girih angle is θ = 36° (straps cross edges at 54°).
 - Both arrangements are verified combinatorially (interior vertex angles sum to 360°, every interior edge shared by exactly two tiles); the bow tie is non-convex and gets special motif handling (see edge pairing below).
 
 ### 2. Hankin Motif (`src/hankin.js`)
@@ -39,7 +39,7 @@ The core algorithm. For every polygon in the tiling:
 
 #### Edge pairing (`buildPairMap`)
 
-Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip suppressed for cycles shorter than 6 edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
+Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip only activates for cycles with strictly more than 6 edges, so hexagons and smaller polygons always pair adjacent edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
 
 #### Thick mode
 
