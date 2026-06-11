@@ -71,6 +71,8 @@ const TILINGS = [
   // ── Girih (Persian strapwork tiles) ──────────────────────────────────────
   { label: 'Girih: Decagons & Bowties',                    config: 'girih-db' },
   { label: 'Girih: Decagons, Hexagons & Bowties',          config: 'girih-dhb' },
+  { label: 'Girih: Rosette — radial, aperiodic',           config: 'girih-rosette' },
+  { label: 'Girih: Wreath — radial, aperiodic',            config: 'girih-wreath' },
 ]
 
 export default function App() {

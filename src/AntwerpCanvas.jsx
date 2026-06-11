@@ -32,6 +32,8 @@ const GIRIH_COLORS = {
   decagon: ['rgba(255,195, 40,0.24)', 'rgba(255,195, 40,0.90)'],  // gold
   hexagon: ['rgba( 67,210,163,0.22)', 'rgba( 67,210,163,0.85)'],  // teal
   bowtie:  ['rgba(220,  70, 60,0.22)', 'rgba(230,  90, 75,0.85)'], // red
+  pentagon: ['rgba( 72,149,239,0.22)', 'rgba( 72,149,239,0.85)'],  // blue
+  rhombus: ['rgba(167,  86,255,0.22)', 'rgba(167,  86,255,0.85)'], // purple
 }
 
 function touchDist(touches) {

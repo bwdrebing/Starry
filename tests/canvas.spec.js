@@ -163,6 +163,15 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('girih-dhb-default.png')
   })
 
+  test('girih rosette — default state', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="Girih: Rosette — radial, aperiodic"]').click()
+    await waitForRender(page)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-rosette-default.png')
+  })
+
   // θ = 36° is the canonical girih angle (straps cross tile edges at 54°);
   // at Density 2 the decagon motif becomes the classic {10/3} ten-pointed star.
   test('girih decagons-bowties — theta 36°, density 2', async ({ page }) => {
