@@ -55,7 +55,10 @@ export default function TilingThumbnail({ configuration, size = 88 }) {
     let shapes = []
     if (configuration.startsWith('penrose')) {
       const sym = parseInt(configuration.slice(6)) || 5
-      shapes = generateMultigrid(size, size, sym)
+      // The multigrid sizes its tiles for the full canvas, far too fine to
+      // read at thumbnail scale; generate for a larger virtual canvas so the
+      // thumbnail zooms in on the tiling's rotationally symmetric centre.
+      shapes = generateMultigrid(size * 4, size * 4, sym)
     } else if (configuration.startsWith('girih-')) {
       shapes = generateGirih(size, size, configuration.slice(6))
     } else {
