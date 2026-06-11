@@ -16,10 +16,16 @@ export function generateMultigrid(width, height, symmetry = 5, steps) {
   const epsilon    = 1e-6
   const eps2       = 1e-3  // offset used in dual computation
 
-  // Irrational-ish offsets per family (golden-ratio spacing) to prevent
-  // three or more lines from coinciding at a single point.
-  const phi = 0.6180339887  // 1/φ
-  const offsets = Array.from({ length: symmetry }, (_, i) => (i * phi) % 1)
+  // One equal offset for every family keeps the whole multigrid invariant
+  // under rotation by 2π/n (rotation just permutes the families), so the dual
+  // tiling has exact n-fold rotational symmetry about the canvas centre.
+  // For n = 5 the offsets sum to 1 ≡ 0 (mod 1), de Bruijn's condition for a
+  // true Penrose tiling — this is the classic 5-fold "sun" pattern.
+  // (At much larger `steps` than the defaults used here, equal offsets can
+  // produce a handful of symmetric 3-line concurrences for n = 7, which the
+  // dual turns into hexagon tiles; at the sizes this app generates, every
+  // tile is a rhombus.)
+  const offsets = Array.from({ length: symmetry }, () => 1 / symmetry)
 
   // Scale from dual-space units → canvas pixels.
   // Matches Pattern Collider: preFactor = min(W,H)/steps × (2π/symmetry) / π

@@ -20,7 +20,7 @@ Two tiling systems are supported:
 - Uses **de Bruijn's multigrid method**: draw *n* families of equally-spaced parallel lines at angles `k·2π/n`, then find every pairwise intersection and project nearby sample points into the dual lattice to obtain rhombus vertices.
 - `generateMultigrid(width, height, symmetry, steps)` returns `shapes` in the same format as Antwerp.
 - Symmetry 5 → Penrose P3; 7 → heptagonal; 8 → Ammann-Beenker.
-- Irrational (golden-ratio-spaced) per-family offsets prevent three lines from meeting at a point, which would produce degenerate dual tiles.
+- All line families share one equal offset (`1/symmetry`), which makes the multigrid invariant under rotation by `2π/n` — the dual tiling therefore has exact n-fold rotational symmetry about the canvas centre (for n = 5 this is the classic Penrose "sun" pattern; the offset sum satisfies de Bruijn's Σγ ≡ 0 condition).
 
 **Girih tilings** (`src/girih.js`)
 - Periodic patterns of the classic Persian girih tiles (regular decagon, elongated hexagon, bow tie), all edges equal, all angles multiples of 36°.
