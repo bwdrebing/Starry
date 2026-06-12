@@ -205,7 +205,7 @@ test.describe('help overlay', () => {
     await expect(page.locator('.help-panel')).toBeVisible()
 
     // Each demo canvas must have actually drawn something (non-transparent pixels)
-    for (const id of ['help-demo-rays', 'help-demo-stars', 'help-demo-weave']) {
+    for (const id of ['help-demo-tilings', 'help-demo-rays', 'help-demo-stars', 'help-demo-weave']) {
       const drawn = await page.locator(`[data-testid="${id}"]`).evaluate(el => {
         const { data } = el.getContext('2d').getImageData(0, 0, el.width, el.height)
         for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true
@@ -219,6 +219,16 @@ test.describe('help overlay', () => {
     await setSlider(page, '#help-rays-angle', 20)
     const after = await demoBitmap(page, 'help-demo-rays')
     expect(after).not.toBe(before)
+
+    // Tilings demo: switching to an aperiodic mode and sliding the ghost both redraw
+    const tilingsBase = await demoBitmap(page, 'help-demo-tilings')
+    await page.locator('.help-section .seg-ctrl button', { hasText: '5-fold' }).click()
+    await page.waitForTimeout(150)
+    const tilingsPenrose = await demoBitmap(page, 'help-demo-tilings')
+    expect(tilingsPenrose).not.toBe(tilingsBase)
+    await setSlider(page, '#help-tilings-slide', 1)
+    const tilingsSlid = await demoBitmap(page, 'help-demo-tilings')
+    expect(tilingsSlid).not.toBe(tilingsPenrose)
 
     // Close via the header button
     await page.locator('.help-close').click()
