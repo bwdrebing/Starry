@@ -283,11 +283,201 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
   return () => theta
 }
 
+// Weaves an array of bands, alternating over/under at successive ribbon
+// crossings, and pushes the resulting segments into outUnder/outOver.
+// Each band is { segs: [{ origin, end, chainOff }], plus, strand, edgeLen }.
+// chainOff orders crossings along multi-segment bands: a crossing's position
+// along the band's travel is chainOff + t, so segments later in the strap's
+// path rank after earlier ones (plain Hankin bands are single-chain, all 0).
+// allowSameStrand admits crossings between the two bands of one strand —
+// rosette straps cross at the petal tip, whereas plain Hankin bands of one
+// strand only join at the star point (a bend, never a crossing).
+function weaveBands(bands, overlapGap, outUnder, outOver, allowSameStrand = false) {
+  // Find every ribbon crossing between bands. For each crossing record, per
+  // boundary segment of each band, the clamped t-values where it crosses the
+  // other band's boundary lines, plus a representative position for ordering
+  // along travel.
+  const crossTs = (segsA, segsB) => segsA.map(sa =>
+    segsB.flatMap(sb => bandCrossParam(sa.origin, sa.end, sb.origin, sb.end))
+         .filter(t => t > -1e-4 && t < 1 - 1e-6)
+         .map(t => Math.max(0, Math.min(1, t))))
+
+  const crossings = []
+  for (let x = 0; x < bands.length; x++) {
+    for (let y = x + 1; y < bands.length; y++) {
+      if (!allowSameStrand && bands[x].strand === bands[y].strand) continue
+      const tsOnA = crossTs(bands[x].segs, bands[y].segs)
+      const tsOnB = crossTs(bands[y].segs, bands[x].segs)
+      const posA = tsOnA.flatMap((ts, si) => ts.map(t => bands[x].segs[si].chainOff + t))
+      const posB = tsOnB.flatMap((ts, si) => ts.map(t => bands[y].segs[si].chainOff + t))
+      if (posA.length === 0 || posB.length === 0) continue
+      crossings.push({
+        a: x, b: y, tsOnA, tsOnB,
+        repA: posA.reduce((s, t) => s + t, 0) / posA.length,
+        repB: posB.reduce((s, t) => s + t, 0) / posB.length,
+      })
+    }
+  }
+
+  // Alternate over/under along each band. Sorted by distance from the band's
+  // origin, crossing k is "over" for a + band when k is even, and for a −
+  // band when k is odd — so at the shared-edge crossing (first for both) the
+  // + band sits on top of the − band, and the weave alternates from there.
+  for (let bi = 0; bi < bands.length; bi++) {
+    const mine = []
+    for (const c of crossings) {
+      if (c.a === bi)      mine.push({ c, rep: c.repA, side: 'a' })
+      else if (c.b === bi) mine.push({ c, rep: c.repB, side: 'b' })
+    }
+    mine.sort((p, q) => p.rep - q.rep)
+    mine.forEach((m, k) => {
+      const over = bands[bi].plus ? k % 2 === 0 : k % 2 === 1
+      if (m.side === 'a') m.c.aOver = over
+      else                m.c.bOver = over
+    })
+  }
+
+  // Cut a gap in whichever band is under at each crossing. When both bands
+  // claim the same state (non-alternating geometry), the + band wins over
+  // the − band; between same-sign bands the first wins.
+  const gaps = bands.map(b => b.segs.map(() => []))
+  for (const c of crossings) {
+    let aOver
+    if (c.aOver !== c.bOver) aOver = c.aOver
+    else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
+    else aOver = true
+    const underIdx = aOver ? c.b : c.a
+    const tsUnder  = aOver ? c.tsOnB : c.tsOnA
+    const under = bands[underIdx]
+    tsUnder.forEach((ts, si2) => {
+      if (ts.length === 0) return
+      const seg = under.segs[si2]
+      const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
+      const extraG = sl > 1e-8 ? (overlapGap * under.edgeLen) / sl : 0
+      // One contiguous gap: entry to exit through the over band's ribbon
+      gaps[underIdx][si2].push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+    })
+  }
+
+  // Push segments. Gapped segments go to outUnder (drawn first), untouched
+  // ones to outOver.
+  for (let bi = 0; bi < bands.length; bi++) {
+    bands[bi].segs.forEach((seg, si2) => {
+      const intervals = gaps[bi][si2]
+      if (intervals.length === 0) outOver.push([seg.origin, seg.end])
+      else pushWithGaps(outUnder, seg.origin, seg.end, mergeIntervals(intervals))
+    })
+  }
+}
+
+// Islamic rosette motif for many-sided tiles. Built from the same edge rays
+// as the Hankin motif, so straps cross each tile edge at the same offsets and
+// angle θ as the neighbours' motifs and the rosette joins them seamlessly.
+// Each entry ray runs straight through the Hankin star point — which becomes
+// the petal tip — to a shoulder, then bends and travels inward parallel to
+// the petal's axis (giving the parallel-sided petals characteristic of Lee's
+// classic rosette construction); the bent lines of adjacent strands meet
+// head-on to close the central star. Returns false without emitting anything
+// when the geometry degenerates (parallel entry rays, or a bent line that
+// meets no partner); the caller then falls back to the plain Hankin motif.
+const ROSETTE_SHOULDER = 0.25 // how far past the petal tip the strap runs, as a fraction of the tile edge length
+const ROSETTE_CORE = 0.55     // radius of the central star notches, as a fraction of the shoulder radius
+
+function computeRosetteSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver) {
+  const n = vertices.length
+  const c = centroid(vertices)
+  const pairWith = buildPairMap(vertices, skip)
+  const allEdgeRays = makeEdgeRays(vertices, thetaAt, delta, thick, bandWidth)
+
+  const edgeLens = Array.from({ length: n }, (_, i) => {
+    const va = vertices[i], vb = vertices[(i + 1) % n]
+    return Math.sqrt((vb[0] - va[0]) ** 2 + (vb[1] - va[1]) ** 2)
+  })
+
+  // Strand geometry per band variant: entry origins, shoulders, bend direction.
+  const variants = []
+  for (const edges of allEdgeRays) {
+    const strands = []
+    for (let i = 0; i < n; i++) {
+      const j = pairWith[i]
+      const rayA = edges[i].left, rayB = edges[j].right
+      const hit = rayIntersect(rayA.origin, rayA.dir, rayB.origin, rayB.dir)
+      if (!hit || !pointInPolygon(hit[2], vertices)) return false
+      const tip = hit[2]
+      const axis = norm2D(sub2D(tip, c))
+      if (axis[0] === 0 && axis[1] === 0) return false
+      strands.push({
+        oA: rayA.origin, oB: rayB.origin,
+        sA: add2D(tip, scale2D(rayA.dir, ROSETTE_SHOULDER * edgeLens[i])),
+        sB: add2D(tip, scale2D(rayB.dir, ROSETTE_SHOULDER * edgeLens[j])),
+        axis,
+      })
+    }
+
+    // The A-ray of strand i continues past its petal tip towards the next
+    // strand's axis, so its petal side closes the star notch with the B-side
+    // of strand i+1. The shared notch point W sits on the bisector radial
+    // between the two petal axes, pulled in towards the tile centre — keeping
+    // every petal side inside its own sector so the central star stays clean
+    // at any θ.
+    for (let i = 0; i < n; i++) {
+      const s = strands[i], next = strands[(i + 1) % n]
+      const bis = norm2D(add2D(s.axis, next.axis))
+      if (bis[0] === 0 && bis[1] === 0) return false
+      const rS = (Math.hypot(s.sA[0] - c[0], s.sA[1] - c[1]) +
+                  Math.hypot(next.sB[0] - c[0], next.sB[1] - c[1])) / 2
+      const w = add2D(c, scale2D(bis, ROSETTE_CORE * rS))
+      if (!pointInPolygon(w, vertices)) return false
+      s.wA = w
+      next.wB = w
+    }
+    variants.push(strands)
+  }
+
+  // No weave: push all polyline segments flat
+  if (!overlap || !thick) {
+    for (const strands of variants) {
+      for (const s of strands) {
+        outOver.push([s.oA, s.sA], [s.sA, s.wA], [s.oB, s.sB], [s.sB, s.wB])
+      }
+    }
+    return true
+  }
+
+  // Each strand contributes a + band (its A polyline: entry then bent line)
+  // and a − band (its B polyline); both boundary variants of a chain link
+  // share its chainOff so crossings sort by travel along the strap.
+  const bands = []
+  for (let i = 0; i < n; i++) {
+    const segsA = [], segsB = []
+    for (const strands of variants) {
+      const s = strands[i]
+      segsA.push({ origin: s.oA, end: s.sA, chainOff: 0 })
+      segsB.push({ origin: s.oB, end: s.sB, chainOff: 0 })
+    }
+    for (const strands of variants) {
+      const s = strands[i]
+      segsA.push({ origin: s.sA, end: s.wA, chainOff: 1 })
+      segsB.push({ origin: s.sB, end: s.wB, chainOff: 1 })
+    }
+    bands.push({ segs: segsA, plus: true,  strand: i, edgeLen: edgeLens[i] })
+    bands.push({ segs: segsB, plus: false, strand: i, edgeLen: edgeLens[pairWith[i]] })
+  }
+  weaveBands(bands, overlapGap, outUnder, outOver, true)
+  return true
+}
+
 // Computes the motif segments for one tile. `vertices` must be in clockwise
 // winding. Plain segments are pushed into outOver; segments that had weave
 // gaps cut into them are pushed into outUnder (drawn first).
-function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver) {
+function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, rosette, outUnder, outOver) {
   const n = vertices.length
+
+  // Rosette mode replaces the star motif in many-sided tiles; on degenerate
+  // geometry it emits nothing and the tile falls through to the plain motif.
+  if (rosette && n >= 10 &&
+      computeRosetteSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver))
+    return
 
   const pairWith = buildPairMap(vertices, skip)
 
@@ -313,8 +503,8 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
     const segs = []
     for (let di = 0; di < allEdgeRays.length; di++) {
       const end = starPts[di][i]
-      segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
-      segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
+      segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true,  chainOff: 0 })
+      segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false, chainOff: 0 })
     }
     return { segs, jPair }
   })
@@ -334,91 +524,18 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
 
   // ── Weave rendering ────────────────────────────────────────────────────────
 
-  // Step 1: split each strand into its two bands. The + band is the left ray
-  // of edge i; the − band is the right ray of edge jPair. Each band owns the
-  // segments of both bplus/bminus boundary lines of that ray.
+  // Split each strand into its two bands. The + band is the left ray of edge
+  // i; the − band is the right ray of edge jPair. Each band owns the segments
+  // of both bplus/bminus boundary lines of that ray. The two bands of one
+  // strand join at the star point — a bend in the ribbon, not a crossing —
+  // so they are never woven against each other.
   const bands = []
   for (let i = 0; i < n; i++) {
     const { segs, jPair } = strands[i]
     bands.push({ segs: segs.filter(s => s.isA),  plus: true,  strand: i, edgeLen: edgeLens[i] })
     bands.push({ segs: segs.filter(s => !s.isA), plus: false, strand: i, edgeLen: edgeLens[jPair] })
   }
-
-  // Step 2: find every ribbon crossing between bands of different strands.
-  // (The two bands of one strand join at the star point — that is a bend in
-  // the ribbon, not a crossing.) For each crossing record, per boundary
-  // segment of each band, the clamped t-values where it crosses the other
-  // band's boundary lines, plus a representative t for ordering along travel.
-  const crossTs = (segsA, segsB) => segsA.map(sa =>
-    segsB.flatMap(sb => bandCrossParam(sa.origin, sa.end, sb.origin, sb.end))
-         .filter(t => t > -1e-4 && t < 1 - 1e-6)
-         .map(t => Math.max(0, Math.min(1, t))))
-
-  const crossings = []
-  for (let x = 0; x < bands.length; x++) {
-    for (let y = x + 1; y < bands.length; y++) {
-      if (bands[x].strand === bands[y].strand) continue
-      const tsOnA = crossTs(bands[x].segs, bands[y].segs)
-      const tsOnB = crossTs(bands[y].segs, bands[x].segs)
-      const flatA = tsOnA.flat(), flatB = tsOnB.flat()
-      if (flatA.length === 0 || flatB.length === 0) continue
-      crossings.push({
-        a: x, b: y, tsOnA, tsOnB,
-        repA: flatA.reduce((s, t) => s + t, 0) / flatA.length,
-        repB: flatB.reduce((s, t) => s + t, 0) / flatB.length,
-      })
-    }
-  }
-
-  // Step 3: alternate over/under along each band. Sorted by distance from the
-  // band's origin, crossing k is "over" for a + band when k is even, and for
-  // a − band when k is odd — so at the shared-edge crossing (first for both)
-  // the + band sits on top of the − band, and the weave alternates from there.
-  for (let bi = 0; bi < bands.length; bi++) {
-    const mine = []
-    for (const c of crossings) {
-      if (c.a === bi)      mine.push({ c, rep: c.repA, side: 'a' })
-      else if (c.b === bi) mine.push({ c, rep: c.repB, side: 'b' })
-    }
-    mine.sort((p, q) => p.rep - q.rep)
-    mine.forEach((m, k) => {
-      const over = bands[bi].plus ? k % 2 === 0 : k % 2 === 1
-      if (m.side === 'a') m.c.aOver = over
-      else                m.c.bOver = over
-    })
-  }
-
-  // Step 4: cut a gap in whichever band is under at each crossing.
-  // When both bands claim the same state (non-alternating geometry), the
-  // + band wins over the − band; between same-sign bands the first wins.
-  const gaps = bands.map(b => b.segs.map(() => []))
-  for (const c of crossings) {
-    let aOver
-    if (c.aOver !== c.bOver) aOver = c.aOver
-    else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
-    else aOver = true
-    const underIdx = aOver ? c.b : c.a
-    const tsUnder  = aOver ? c.tsOnB : c.tsOnA
-    const under = bands[underIdx]
-    tsUnder.forEach((ts, si2) => {
-      if (ts.length === 0) return
-      const seg = under.segs[si2]
-      const sl = Math.sqrt((seg.end[0] - seg.origin[0]) ** 2 + (seg.end[1] - seg.origin[1]) ** 2)
-      const extraG = sl > 1e-8 ? (overlapGap * under.edgeLen) / sl : 0
-      // One contiguous gap: entry to exit through the over band's ribbon
-      gaps[underIdx][si2].push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
-    })
-  }
-
-  // Step 5: push segments. Gapped segments go to outUnder (drawn first),
-  // untouched ones to outOver.
-  for (let bi = 0; bi < bands.length; bi++) {
-    bands[bi].segs.forEach((seg, si2) => {
-      const intervals = gaps[bi][si2]
-      if (intervals.length === 0) outOver.push([seg.origin, seg.end])
-      else pushWithGaps(outUnder, seg.origin, seg.end, mergeIntervals(intervals))
-    })
-  }
+  weaveBands(bands, overlapGap, outUnder, outOver)
 }
 
 // ── Motif caching ────────────────────────────────────────────────────────────
@@ -460,7 +577,7 @@ function stampSegments(out, segs, c, s, ox, oy) {
   }
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0, rosette = false) {
   const allUnder = [], allOver = []
 
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
@@ -469,7 +586,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   // congruent tiles cannot share results and the cache is bypassed.
   const cacheable = parquetDirection === 'none'
   if (cacheable) {
-    const params = `${theta}|${delta}|${thick}|${overlap}|${overlapGap}|${bandWidth}|${skip}`
+    const params = `${theta}|${delta}|${thick}|${overlap}|${overlapGap}|${bandWidth}|${skip}|${rosette}`
     if (motifCache.params !== params) {
       motifCache.params = params
       motifCache.map.clear()
@@ -482,7 +599,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
 
     if (!cacheable) {
-      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, allUnder, allOver)
+      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, rosette, allUnder, allOver)
       continue
     }
 
@@ -490,7 +607,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     let entry = motifCache.map.get(key)
     if (!entry) {
       entry = { under: [], over: [] }
-      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, entry.under, entry.over)
+      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, rosette, entry.under, entry.over)
       if (motifCache.map.size < MOTIF_CACHE_MAX) motifCache.map.set(key, entry)
     }
     stampSegments(allUnder, entry.under, c, s, ox, oy)
@@ -622,7 +739,7 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
   ctx.restore()
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0, rosette = false) {
   // Compute thetaAt once when in debug mode; reused by both region fills and ray visualisation.
   const thetaAt = debug
     ? buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
@@ -631,7 +748,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   // Region fills drawn first so they sit behind the motif lines
   if (debug) drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip)
 
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip, rosette)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()

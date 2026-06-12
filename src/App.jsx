@@ -98,6 +98,7 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
+  const [rosette, setRosette] = useState(false)
   const [activeTab, setActiveTab] = useState('motif')
   const [tilingScrolled, setTilingScrolled] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
@@ -254,6 +255,7 @@ export default function App() {
           ellipseMajorScale={ellipseMajorScale}
           ellipseMinorScale={ellipseMinorScale}
           skip={skip}
+          rosette={rosette}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
@@ -633,6 +635,19 @@ export default function App() {
                               onClick={() => setSkip(v)}>{v}</button>
                           ))}
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="prop-row">
+                      <span className="prop-label">Rosette</span>
+                      <div className="prop-control">
+                        <button
+                          className={`toggle-switch${rosette ? ' on' : ''}`}
+                          onClick={() => setRosette(v => !v)}
+                          aria-label="Toggle rosette"
+                        >
+                          <span className="toggle-knob" />
+                        </button>
                       </div>
                     </div>
 

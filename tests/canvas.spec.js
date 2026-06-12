@@ -118,6 +118,48 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('trunc-hex-thick-density-1.png')
   })
 
+  // ── Rosette motif ─────────────────────────────────────────────────────────
+
+  // The Rosette toggle replaces the Hankin star with an Islamic rosette in
+  // every tile with 10 or more sides; smaller tiles keep their plain motif.
+  test('truncated hexagonal — rosette', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 3.12² — Truncated Hexagonal"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await page.locator('[aria-label="Toggle rosette"]').click()
+    await page.waitForTimeout(80)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('trunc-hex-rosette.png')
+  })
+
+  test('truncated hexagonal — rosette, thick bands', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 3.12² — Truncated Hexagonal"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await page.locator('[aria-label="Toggle rosette"]').click()
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
+    await page.waitForTimeout(80)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('trunc-hex-rosette-thick.png')
+  })
+
+  test('girih decagons-bowties — rosette, theta 36°', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="Girih: Decagons & Bowties"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#theta-slider', 36)
+    await page.locator('[aria-label="Toggle rosette"]').click()
+    await page.waitForTimeout(80)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-rosette-theta-36.png')
+  })
+
   // ── Square tiling ─────────────────────────────────────────────────────────
 
   test('square — default state', async ({ page }) => {
