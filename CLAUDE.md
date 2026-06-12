@@ -42,6 +42,10 @@ The core algorithm. For every polygon in the tiling:
 
 Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip only activates for cycles with strictly more than 6 edges, so hexagons and smaller polygons always pair adjacent edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
 
+#### Rosette mode (`computeRosetteSegments`)
+
+When the Rosette setting is on, tiles with **10 or more sides** replace their Hankin star with an Islamic rosette. The rosette is built from the same edge rays as the plain motif, so straps cross each tile edge at the same offsets and angle θ as neighbouring tiles' motifs and the rosette joins them seamlessly; θ, delta, Density (skip) and thick bands all apply. Each entry ray runs straight through the Hankin star point — which becomes the **petal tip** — and continues for `ROSETTE_SHOULDER` (0.25) of the tile edge length to a **shoulder**, then bends into a petal side that closes the central star's notch with the matching side of the adjacent strand. The shared notch point sits on the bisector radial between the two petal axes at `ROSETTE_CORE` (0.55) of the shoulder radius, which keeps every petal side inside its own sector so the central star stays clean at any θ. On degenerate geometry (parallel entry rays at θ ≈ 180°/n, or a notch landing outside the tile) the tile silently falls back to the plain Hankin motif. In thick mode each strand's two polylines weave through the generic `weaveBands` machinery, with `chainOff` ordering crossings along the two-segment chains and same-strand crossings admitted (rosette straps cross at the petal tip, unlike plain Hankin bands which only join at the star point).
+
 #### Thick mode
 
 When `thick=true`, `makeEdgeRays()` produces **two band variants** per polygon:
@@ -65,7 +69,7 @@ Segments that received gaps are returned in `underSegs` (drawn first); untouched
 
 #### Motif caching (congruent tiles)
 
-When `parquetDirection === 'none'`, θ is spatially constant and every motif quantity scales with edge length, so a tile's motif is equivariant under rotation + translation. `getHankinSegments` exploits this: each tile is mapped to a canonical frame (vertex 0 at the origin, edge 0→1 along +x), the per-tile computation (`computeTileSegments`) runs once per distinct canonical shape, and the cached segments are stamped onto every congruent tile through its own rigid transform. The cache key is the canonical vertex list quantised to 0.01 px — a near-miss only costs a redundant recompute, never a wrong reuse — and the whole cache is cleared whenever any motif parameter (θ, delta, thick, overlap, overlapGap, bandWidth, skip) changes. Reflected tiles hash to different keys, as required since the motif is chiral. Any spatially varying θ mode bypasses the cache entirely.
+When `parquetDirection === 'none'`, θ is spatially constant and every motif quantity scales with edge length, so a tile's motif is equivariant under rotation + translation. `getHankinSegments` exploits this: each tile is mapped to a canonical frame (vertex 0 at the origin, edge 0→1 along +x), the per-tile computation (`computeTileSegments`) runs once per distinct canonical shape, and the cached segments are stamped onto every congruent tile through its own rigid transform. The cache key is the canonical vertex list quantised to 0.01 px — a near-miss only costs a redundant recompute, never a wrong reuse — and the whole cache is cleared whenever any motif parameter (θ, delta, thick, overlap, overlapGap, bandWidth, skip, rosette) changes. Reflected tiles hash to different keys, as required since the motif is chiral. Any spatially varying θ mode bypasses the cache entirely.
 
 ### 3. Parquet deformation
 
@@ -97,6 +101,7 @@ All state lives in `App`. Key controls:
 | Angle (θ) | `thetaDeg` | Ray angle in degrees (10–80°) |
 | Parquet | `parquetDirection` | Spatial θ variation mode |
 | Delta | `delta` | Along-edge offset of ray origins (0–0.9) |
+| Rosette | `rosette` | Replaces the motif in tiles with ≥ 10 sides with an Islamic rosette |
 | Thick | `thick` | Enables double-band mode; forces `overlap=true` |
 | Width | `bandWidth` | Half-width of thick bands (0.01–0.5) |
 
