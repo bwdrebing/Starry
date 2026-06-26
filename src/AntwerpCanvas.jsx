@@ -36,6 +36,28 @@ const GIRIH_COLORS = {
   rhombus: ['rgba(167,  86,255,0.22)', 'rgba(167,  86,255,0.85)'], // purple
 }
 
+// Antwerp `toShapes` cost is super-linear in canvas area (≈O(area²)), so we
+// never hand it the full window. Instead we generate only the central patch the
+// current Scale (radius) actually displays, plus a small margin, and grow it
+// on demand. MAX_GEN_SIZE is a hard ceiling so even Scale=100% on a 4K display
+// stays bounded (at the cost of not filling the extreme corners on huge windows).
+const MAX_GEN_SIZE = 1000   // px — hard cap on either generation dimension
+const GEN_MARGIN = 1.25      // generate slightly past the visible disc for a clean trim
+// `toShapes` fills past the canvas edge, so historically a tile at Scale·(max
+// generated tile distance) sat ~1.25× the canvas half-diagonal out. We can't
+// recover that exact distance without the (expensive) full generation, so we
+// approximate it with this factor to keep the Scale slider's calibration — and
+// the default view — visually unchanged.
+const OVERFILL_FACTOR = 1.25
+
+// True for the Antwerp/Archimedean tilings (the expensive `toShapes` path).
+// Penrose and girih are size-independent / memoised and generate at full size.
+function isAntwerpConfig(config) {
+  return !!config &&
+    config !== 'truchet' && config !== 'squareTruchet' &&
+    !config.startsWith('penrose') && !config.startsWith('girih-')
+}
+
 function touchDist(touches) {
   const dx = touches[0].clientX - touches[1].clientX
   const dy = touches[0].clientY - touches[1].clientY
@@ -93,15 +115,27 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const onParquetParamChangeRef = useRef(onParquetParamChange)
   const skipRef = useRef(skip)
   const boundsRef = useRef({ minX: -200, maxX: 200, minY: -200, maxY: 200, maxR: 200 })
+  // Antwerp patch-generation bookkeeping (see isAntwerpConfig / generate).
+  const configRef          = useRef(configuration)
+  const shapeSizeRef       = useRef(shapeSize)
+  const isAntwerpRef       = useRef(false)
+  const genCutoffRef       = useRef(null)   // absolute px radius to trim to, or null for r·maxDist
+  const generatedRadiusRef = useRef(0)      // the Scale the current patch was generated for
+  const patchMaxRRef       = useRef(Infinity) // max tile distance the current patch contains
+  const radiusInitRef      = useRef(false)
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
   const onTileClickRef      = useRef(onTileClick)
 
-  // Filter allShapesRef by radius fraction and write result into shapesRef.
+  // Filter allShapesRef into shapesRef. For the Antwerp path the patch is
+  // already sized to the visible Scale, so we trim to an absolute pixel radius
+  // (genCutoffRef); every other tiling keeps the r·maxDist fraction behaviour.
   const applyRadius = useCallback(() => {
-    const r = radiusRef.current
     const all = allShapesRef.current
-    if (r >= 1) { shapesRef.current = all } else {
+    const absCutoff = genCutoffRef.current
+    if (absCutoff == null && radiusRef.current >= 1) {
+      shapesRef.current = all
+    } else {
       const dists = all.map(shape => {
         const raw = shape[0]
         if (!raw || raw.length < 3) return 0
@@ -110,8 +144,15 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
         const cy = raw.reduce((s, v) => s + v[1], 0) / n
         return Math.sqrt(cx * cx + cy * cy)
       })
-      const maxDist = Math.max(...dists, 1e-8)
-      shapesRef.current = all.filter((_, i) => dists[i] <= r * maxDist)
+      let cutoff = absCutoff
+      if (cutoff == null) {
+        // Loop instead of Math.max(...dists): the spread overflows the call
+        // stack on very large arrays.
+        let maxDist = 1e-8
+        for (const d of dists) if (d > maxDist) maxDist = d
+        cutoff = radiusRef.current * maxDist
+      }
+      shapesRef.current = all.filter((_, i) => dists[i] <= cutoff)
     }
     // Recompute spatial bounds used for handle positioning.
     let bMinX = Infinity, bMaxX = -Infinity, bMinY = Infinity, bMaxY = -Infinity, bMaxR = 0
@@ -323,7 +364,6 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     parquetDirectionRef.current = parquetDirection
     thetaMinRef.current = thetaMin
     thetaMaxRef.current = thetaMax
-    radiusRef.current = radius
     parquetFunctionRef.current = parquetFunction
     animSpeedRef.current = animSpeed
     linearAngleRef.current = linearAngle
@@ -336,7 +376,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     skipRef.current = skip
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, skip, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, skip, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -359,9 +399,13 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     draw()
   }, [selectedTileIdx, draw])
 
-  // Recompute shapes and reset view when configuration changes
-  useEffect(() => {
+  // Generate allShapesRef for the current configuration at the current Scale.
+  // Reads configuration/shapeSize/radius from refs so its identity is stable
+  // (the radius effect below can call it without a stale-config closure).
+  const generate = useCallback(() => {
     const canvas = canvasRef.current
+    const configuration = configRef.current
+    const shapeSize = shapeSizeRef.current
     if (!canvas || !configuration) return
 
     const rect = canvas.getBoundingClientRect()
@@ -370,18 +414,39 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     canvas.width = W
     canvas.height = H
 
+    isAntwerpRef.current = isAntwerpConfig(configuration)
+
     if (configuration === 'truchet') {
+      genCutoffRef.current = null
       allShapesRef.current = generateTruchetTiling(W, H)
     } else if (configuration === 'squareTruchet') {
+      genCutoffRef.current = null
       allShapesRef.current = generateSquareTruchetTiling(W, H)
     } else if (configuration.startsWith('penrose')) {
+      genCutoffRef.current = null
       const sym = parseInt(configuration.slice(6)) || 5
       allShapesRef.current = generateMultigrid(W, H, sym)
     } else if (configuration.startsWith('girih-')) {
+      genCutoffRef.current = null
       allShapesRef.current = generateGirih(W, H, configuration.slice(6))
     } else {
+      // Antwerp: generate only the central patch the current Scale shows.
+      const r = radiusRef.current
+      const fullHalfDiag = 0.5 * Math.hypot(W, H)
+      const visibleR = r * fullHalfDiag * OVERFILL_FACTOR
+      // Patch side: cover the visible disc (+margin), but never exceed the
+      // canvas footprint nor the hard cap.
+      const side = Math.min(Math.max(W, H), 2 * visibleR * GEN_MARGIN, MAX_GEN_SIZE)
+      const genW = Math.min(W, side)
+      const genH = Math.min(H, side)
+      const patchMaxR = 0.5 * Math.hypot(genW, genH)
+      generatedRadiusRef.current = r
+      patchMaxRRef.current = patchMaxR
+      // When the cap (not the radius) bounds the patch, the visible disc can
+      // reach past it; trim to whichever is smaller.
+      genCutoffRef.current = Math.min(visibleR, patchMaxR)
       try {
-        const data = toShapes({ configuration, width: W, height: H, shapeSize })
+        const data = toShapes({ configuration, width: genW, height: genH, shapeSize })
         allShapesRef.current = data?.shapes ?? []
       } catch (err) {
         console.error('Failed to generate tiling:', err)
@@ -389,10 +454,42 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       }
     }
     applyRadius()
+  }, [applyRadius])
 
+  // Recompute shapes and reset view when configuration (or tile size) changes.
+  // App resets radius to its default in the same render as a tiling switch, so
+  // sync radiusRef here too and let generate() size the patch to it.
+  useEffect(() => {
+    configRef.current = configuration
+    shapeSizeRef.current = shapeSize
+    radiusRef.current = radius
+    generate()
     transformRef.current = { x: 0, y: 0, scale: 1 }
     draw()
-  }, [configuration, shapeSize, applyRadius, draw])
+    // radius is intentionally read-latest, not a trigger (the radius effect owns it)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configuration, shapeSize, generate, draw])
+
+  // Scale (radius) changes: for Antwerp, grow the patch on demand — shrinking
+  // just re-trims the existing (larger) patch, so dragging Scale down never
+  // regenerates. Other tilings already hold the full pattern and only re-filter.
+  useEffect(() => {
+    radiusRef.current = radius
+    if (!radiusInitRef.current) { radiusInitRef.current = true; return }
+    if (isAntwerpRef.current) {
+      if (radius <= generatedRadiusRef.current) {
+        const canvas = canvasRef.current
+        const visibleR = radius * 0.5 * Math.hypot(canvas.width, canvas.height) * OVERFILL_FACTOR
+        genCutoffRef.current = Math.min(visibleR, patchMaxRRef.current)
+        applyRadius()
+      } else {
+        generate()
+      }
+    } else {
+      applyRadius()
+    }
+    draw()
+  }, [radius, generate, applyRadius, draw])
 
   // All canvas interaction: pan/pinch/zoom, parquet handle drag (mouse + touch), cursor feedback.
   useEffect(() => {
