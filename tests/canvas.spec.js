@@ -26,9 +26,14 @@ async function canvasSnapshot(page) {
 }
 
 // Set a range slider value and fire the React input event.
+// React installs its own setter on the input's `value` property to track
+// changes, so assigning `el.value` directly updates that tracker and the
+// dispatched event is then seen as a no-op. Going through the native setter
+// keeps React's tracker stale so the synthetic onChange actually fires.
 async function setSlider(page, id, value) {
   await page.locator(id).evaluate((el, v) => {
-    el.value = String(v)
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    nativeSetter.call(el, String(v))
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }, value)
   await page.waitForTimeout(80)
@@ -86,6 +91,16 @@ test.describe('canvas rendering', () => {
     await openTab(page, 2) // Style tab
     await setSlider(page, '#delta-slider', 0.3)
     expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-delta-03.png')
+  })
+
+  // Crossbar bevels each star point into a flat bar between the two rays;
+  // 0.5 places the bar at the ray midpoints.
+  test('default tiling — crossbar join 0.5', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#crossbar-slider', 0.5)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-crossbar-05.png')
   })
 
   // ── Parquet deformation ───────────────────────────────────────────────────

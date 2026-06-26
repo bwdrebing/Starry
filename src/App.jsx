@@ -98,6 +98,7 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
+  const [crossbar, setCrossbar] = useState(0)
   const [activeTab, setActiveTab] = useState('motif')
   const [tilingScrolled, setTilingScrolled] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
@@ -254,6 +255,7 @@ export default function App() {
           ellipseMajorScale={ellipseMajorScale}
           ellipseMinorScale={ellipseMinorScale}
           skip={skip}
+          crossbar={crossbar}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
@@ -634,6 +636,15 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    <div className="prop-row">
+                      <span className="prop-label">Join</span>
+                      <div className="prop-control">
+                        <input id="crossbar-slider" type="range" min={0} max={0.9} step={0.01}
+                          value={crossbar} onChange={e => setCrossbar(Number(e.target.value))} />
+                      </div>
+                      <span className="prop-value">{crossbar === 0 ? 'off' : crossbar.toFixed(2)}</span>
                     </div>
 
                     <div className="prop-row">
