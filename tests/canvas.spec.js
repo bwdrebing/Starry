@@ -156,6 +156,22 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('square-thick.png')
   })
 
+  // Crossbar + thick: each crossbar end inherits the over/under depth of the
+  // ray it attaches to, so the bars weave into the bands instead of floating
+  // on top.
+  test('square — thick bands, crossbar join', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 4⁴ — Square"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
+    await page.waitForTimeout(80)
+    await setSlider(page, '#crossbar-slider', 0.5)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('square-thick-crossbar.png')
+  })
+
   // ── Penrose 5-fold ────────────────────────────────────────────────────────
 
   test('penrose 5-fold — default state', async ({ page }) => {

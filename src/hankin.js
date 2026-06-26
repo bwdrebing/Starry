@@ -420,6 +420,7 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
     if (c.aOver !== c.bOver) aOver = c.aOver
     else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
     else aOver = true
+    c.aOverResolved = aOver  // band c.a is over here iff true (used for crossbar depth)
     const underIdx = aOver ? c.b : c.a
     const tsUnder  = aOver ? c.tsOnB : c.tsOnA
     const under = bands[underIdx]
@@ -443,10 +444,44 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
     })
   }
 
-  // Crossbars sit at the strand's star point, interior to the weave, and are
-  // drawn on top rather than woven against the long straps.
-  for (const strand of strands) {
-    for (const cbar of strand.crossbars) outOver.push(cbar)
+  // Depth of each band at its far end (the point nearest the star, where the
+  // crossbar attaches): the resolved over/under state at the band's last
+  // crossing. A band with no crossings defaults to over.
+  const endOver = bands.map(() => true)
+  for (let bi = 0; bi < bands.length; bi++) {
+    let bestRep = -Infinity
+    for (const c of crossings) {
+      if (c.a === bi && c.repA > bestRep)      { bestRep = c.repA; endOver[bi] = c.aOverResolved }
+      else if (c.b === bi && c.repB > bestRep) { bestRep = c.repB; endOver[bi] = !c.aOverResolved }
+    }
+  }
+
+  // Crossbars bridge a strand's two band ends at the star point. Each crossbar
+  // is split at its midpoint so each half takes the depth of the ray end it
+  // attaches to (+ band end for the pA half, − band end for the pB half): an
+  // "over" half is drawn on top; an "under" half is gapped wherever another
+  // strand's ribbon crosses it, so it weaves under just like the ray does.
+  for (let i = 0; i < n; i++) {
+    const plusEndOver = endOver[2 * i], minusEndOver = endOver[2 * i + 1]
+    for (const [pA, pB] of strands[i].crossbars) {
+      const mid = [(pA[0] + pB[0]) / 2, (pA[1] + pB[1]) / 2]
+      for (const [from, to, isOver] of [[pA, mid, plusEndOver], [mid, pB, minusEndOver]]) {
+        if (isOver) { outOver.push([from, to]); continue }
+        // Under half: collect the spans where it passes behind any other strand's ribbon.
+        const sl = Math.sqrt((to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2)
+        const extraG = sl > 1e-8 ? (overlapGap * edgeLens[i]) / sl : 0
+        const intervals = []
+        for (let bj = 0; bj < bands.length; bj++) {
+          if (bands[bj].strand === i) continue
+          const ts = bands[bj].segs
+            .flatMap(sb => bandCrossParam(from, to, sb.origin, sb.end))
+            .filter(t => t > 1e-6 && t < 1 - 1e-6)
+          if (ts.length) intervals.push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+        }
+        if (intervals.length === 0) outOver.push([from, to])
+        else pushWithGaps(outUnder, from, to, mergeIntervals(intervals))
+      }
+    }
   }
 }
 
