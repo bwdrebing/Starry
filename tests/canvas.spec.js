@@ -26,9 +26,14 @@ async function canvasSnapshot(page) {
 }
 
 // Set a range slider value and fire the React input event.
+// React installs its own setter on the input's `value` property to track
+// changes, so assigning `el.value` directly updates that tracker and the
+// dispatched event is then seen as a no-op. Going through the native setter
+// keeps React's tracker stale so the synthetic onChange actually fires.
 async function setSlider(page, id, value) {
   await page.locator(id).evaluate((el, v) => {
-    el.value = String(v)
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    nativeSetter.call(el, String(v))
     el.dispatchEvent(new Event('input', { bubbles: true }))
   }, value)
   await page.waitForTimeout(80)
@@ -88,6 +93,16 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-delta-03.png')
   })
 
+  // Crossbar bevels each star point into a flat bar between the two rays;
+  // 0.5 places the bar at the ray midpoints.
+  test('default tiling — crossbar join 0.5', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#crossbar-slider', 0.5)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('default-tiling-crossbar-05.png')
+  })
+
   // ── Parquet deformation ───────────────────────────────────────────────────
 
   // Spatially varying θ takes the non-cached path in getHankinSegments (the
@@ -139,6 +154,40 @@ test.describe('canvas rendering', () => {
     await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
     await page.waitForTimeout(80)
     expect(await canvasSnapshot(page)).toMatchSnapshot('square-thick.png')
+  })
+
+  // Crossbar + thick: each crossbar end inherits the over/under depth of the
+  // ray it attaches to, so the bars weave into the bands instead of floating
+  // on top.
+  test('square — thick bands, crossbar join', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 4⁴ — Square"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
+    await page.waitForTimeout(80)
+    await setSlider(page, '#crossbar-slider', 0.5)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('square-thick-crossbar.png')
+  })
+
+  // Wide bands + a large crossbar push the crossbar end points inside
+  // neighbouring strands' ribbons; the under halves must be occluded over the
+  // whole span they lie within those ribbons, not just at boundary crossings.
+  test('hexagonal — wide thick bands, crossbar join', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 6³ — Hexagonal"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#delta-slider', 0.15)
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
+    await page.waitForTimeout(80)
+    await setSlider(page, '#bandwidth-slider', 0.18)
+    await setSlider(page, '#crossbar-slider', 0.6)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-thick-crossbar.png')
   })
 
   // ── Penrose 5-fold ────────────────────────────────────────────────────────

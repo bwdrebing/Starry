@@ -199,6 +199,33 @@ function mergeIntervals(intervals) {
   return out
 }
 
+// Returns the [lo, hi] sub-interval (param in [0,1]) of segment from→to that
+// lies inside `band`'s ribbon — the strip between its two boundary segments —
+// or null if the segment never enters it. Unlike a pure boundary-crossing
+// test this handles an endpoint that starts or ends inside the ribbon (the
+// case where a crossbar point lands within another band), extending the
+// interval to that endpoint instead of missing it.
+function segmentInRibbon(from, to, band) {
+  const segs = band.segs
+  if (segs.length < 2) return null
+  // The ribbon quad: edge origins out to the two tip points and back. Clip the
+  // segment against all four sides (the long boundary lines *and* the end caps)
+  // so a segment leaving through the tip cap is detected, not just the sides.
+  const quad = [segs[0].origin, segs[0].end, segs[1].end, segs[1].origin]
+  const fromIn = pointInPolygon(from, quad)
+  const toIn   = pointInPolygon(to, quad)
+  const ts = []
+  for (let e = 0; e < 4; e++) {
+    const a = quad[e], b = quad[(e + 1) % 4]
+    for (const t of bandCrossParam(from, to, a, b))
+      if (t > -1e-4 && t < 1 + 1e-4) ts.push(Math.max(0, Math.min(1, t)))
+  }
+  if (!fromIn && !toIn && ts.length === 0) return null
+  const lo = fromIn ? 0 : (ts.length ? Math.min(...ts) : 0)
+  const hi = toIn   ? 1 : (ts.length ? Math.max(...ts) : 1)
+  return [lo, hi]
+}
+
 // Pushes all visible sub-segments of origin→end after removing the (pre-merged) gap intervals.
 function pushWithGaps(list, origin, end, gapIntervals) {
   const dx = end[0] - origin[0], dy = end[1] - origin[1]
@@ -286,7 +313,14 @@ function buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin
 // Computes the motif segments for one tile. `vertices` must be in clockwise
 // winding. Plain segments are pushed into outOver; segments that had weave
 // gaps cut into them are pushed into outUnder (drawn first).
-function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, outUnder, outOver) {
+//
+// `crossbar` (0..1) bevels the star point. Instead of the two rays of a strand
+// meeting at a sharp point X, each ray is cut short at a fraction `crossbar` of
+// the way from X back toward its origin and the two cut points are joined by a
+// short "crossbar" segment — so crossbar=0 is the classic sharp join, 0.5 puts
+// the bar at the midpoints of both rays, and larger values pull the bar out
+// toward the tile edges.
+function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, crossbar, outUnder, outOver) {
   const n = vertices.length
 
   const pairWith = buildPairMap(vertices, skip)
@@ -308,15 +342,30 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
 
   // One strand per pair i. Each strand owns 2 segs (non-thick) or 4 segs (thick):
   // the A-side (left ray of edge i) and B-side (right ray of edge jPair) for each band.
+  // With crossbar > 0 each ray ends short of the star point at `pCut`, and the two
+  // cut points of each band variant are bridged by a crossbar segment.
+  const useCrossbar = crossbar > 1e-6
   const strands = Array.from({ length: n }, (_, i) => {
     const jPair = pairWith[i]
     const segs = []
+    const crossbars = []
     for (let di = 0; di < allEdgeRays.length; di++) {
-      const end = starPts[di][i]
-      segs.push({ origin: allEdgeRays[di][i].left.origin,      end, isA: true  })
-      segs.push({ origin: allEdgeRays[di][jPair].right.origin, end, isA: false })
+      const X  = starPts[di][i]
+      const oA = allEdgeRays[di][i].left.origin
+      const oB = allEdgeRays[di][jPair].right.origin
+      if (useCrossbar) {
+        // pCut = X + crossbar·(origin − X): cut point a fraction of the way back from X.
+        const pA = [X[0] + crossbar * (oA[0] - X[0]), X[1] + crossbar * (oA[1] - X[1])]
+        const pB = [X[0] + crossbar * (oB[0] - X[0]), X[1] + crossbar * (oB[1] - X[1])]
+        segs.push({ origin: oA, end: pA, isA: true  })
+        segs.push({ origin: oB, end: pB, isA: false })
+        crossbars.push([pA, pB])
+      } else {
+        segs.push({ origin: oA, end: X, isA: true  })
+        segs.push({ origin: oB, end: X, isA: false })
+      }
     }
-    return { segs, jPair }
+    return { segs, jPair, crossbars }
   })
 
   const edgeLens = Array.from({ length: n }, (_, i) => {
@@ -328,6 +377,7 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
   if (!overlap || !thick) {
     for (const strand of strands) {
       for (const seg of strand.segs) outOver.push([seg.origin, seg.end])
+      for (const cbar of strand.crossbars) outOver.push(cbar)
     }
     return
   }
@@ -397,6 +447,7 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
     if (c.aOver !== c.bOver) aOver = c.aOver
     else if (bands[c.a].plus !== bands[c.b].plus) aOver = bands[c.a].plus
     else aOver = true
+    c.aOverResolved = aOver  // band c.a is over here iff true (used for crossbar depth)
     const underIdx = aOver ? c.b : c.a
     const tsUnder  = aOver ? c.tsOnB : c.tsOnA
     const under = bands[underIdx]
@@ -418,6 +469,44 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
       if (intervals.length === 0) outOver.push([seg.origin, seg.end])
       else pushWithGaps(outUnder, seg.origin, seg.end, mergeIntervals(intervals))
     })
+  }
+
+  // Depth of each band at its far end (the point nearest the star, where the
+  // crossbar attaches): the resolved over/under state at the band's last
+  // crossing. A band with no crossings defaults to over.
+  const endOver = bands.map(() => true)
+  for (let bi = 0; bi < bands.length; bi++) {
+    let bestRep = -Infinity
+    for (const c of crossings) {
+      if (c.a === bi && c.repA > bestRep)      { bestRep = c.repA; endOver[bi] = c.aOverResolved }
+      else if (c.b === bi && c.repB > bestRep) { bestRep = c.repB; endOver[bi] = !c.aOverResolved }
+    }
+  }
+
+  // Crossbars bridge a strand's two band ends at the star point. Each crossbar
+  // is split at its midpoint so each half takes the depth of the ray end it
+  // attaches to (+ band end for the pA half, − band end for the pB half): an
+  // "over" half is drawn on top; an "under" half is gapped over every span where
+  // it lies within another strand's ribbon — including where its own endpoint
+  // falls inside that ribbon — so it weaves under just like the ray does.
+  for (let i = 0; i < n; i++) {
+    const plusEndOver = endOver[2 * i], minusEndOver = endOver[2 * i + 1]
+    for (const [pA, pB] of strands[i].crossbars) {
+      const mid = [(pA[0] + pB[0]) / 2, (pA[1] + pB[1]) / 2]
+      for (const [from, to, isOver] of [[pA, mid, plusEndOver], [mid, pB, minusEndOver]]) {
+        if (isOver) { outOver.push([from, to]); continue }
+        const sl = Math.sqrt((to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2)
+        const extraG = sl > 1e-8 ? (overlapGap * edgeLens[i]) / sl : 0
+        const intervals = []
+        for (let bj = 0; bj < bands.length; bj++) {
+          if (bands[bj].strand === i) continue
+          const occ = segmentInRibbon(from, to, bands[bj])
+          if (occ) intervals.push([occ[0] - extraG, occ[1] + extraG])
+        }
+        if (intervals.length === 0) outOver.push([from, to])
+        else pushWithGaps(outUnder, from, to, mergeIntervals(intervals))
+      }
+    }
   }
 }
 
@@ -460,7 +549,7 @@ function stampSegments(out, segs, c, s, ox, oy) {
   }
 }
 
-export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0, crossbar = 0) {
   const allUnder = [], allOver = []
 
   const thetaAt = buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
@@ -469,7 +558,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
   // congruent tiles cannot share results and the cache is bypassed.
   const cacheable = parquetDirection === 'none'
   if (cacheable) {
-    const params = `${theta}|${delta}|${thick}|${overlap}|${overlapGap}|${bandWidth}|${skip}`
+    const params = `${theta}|${delta}|${thick}|${overlap}|${overlapGap}|${bandWidth}|${skip}|${crossbar}`
     if (motifCache.params !== params) {
       motifCache.params = params
       motifCache.map.clear()
@@ -482,7 +571,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     const vertices = ensureClockwise(raw)
 
     if (!cacheable) {
-      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, allUnder, allOver)
+      computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, crossbar, allUnder, allOver)
       continue
     }
 
@@ -490,7 +579,7 @@ export function getHankinSegments(shapes, theta = Math.PI / 4, delta = 0, thick 
     let entry = motifCache.map.get(key)
     if (!entry) {
       entry = { under: [], over: [] }
-      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, entry.under, entry.over)
+      computeTileSegments(canon, thetaAt, delta, thick, overlap, overlapGap, bandWidth, skip, crossbar, entry.under, entry.over)
       if (motifCache.map.size < MOTIF_CACHE_MAX) motifCache.map.set(key, entry)
     }
     stampSegments(allUnder, entry.under, c, s, ox, oy)
@@ -622,7 +711,7 @@ function drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip) {
   ctx.restore()
 }
 
-export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0) {
+export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, parquetDirection = 'none', thetaMin = theta, thetaMax = theta, parquetFunction = 'wave-ltr', time = 0, speed = 1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, skip = 0, crossbar = 0) {
   // Compute thetaAt once when in debug mode; reused by both region fills and ray visualisation.
   const thetaAt = debug
     ? buildThetaAt(shapes, parquetDirection, parquetFunction, theta, thetaMin, thetaMax, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale)
@@ -631,7 +720,7 @@ export function drawHankin(ctx, shapes, theta = Math.PI / 4, delta = 0, debug = 
   // Region fills drawn first so they sit behind the motif lines
   if (debug) drawHankinRegions(ctx, shapes, thetaAt, delta, bandWidth, skip)
 
-  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip)
+  const { underSegs, overSegs } = getHankinSegments(shapes, theta, delta, thick, overlap, overlapGap, bandWidth, parquetDirection, thetaMin, thetaMax, parquetFunction, time, speed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, skip, crossbar)
 
   for (const [p1, p2] of underSegs) {
     ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke()

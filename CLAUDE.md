@@ -42,6 +42,10 @@ The core algorithm. For every polygon in the tiling:
 
 Ray pairing is computed by `buildPairMap(vertices, skip)`. Convex tiles pair edge *i* with edge *i+1+skip* around a single cycle (skip only activates for cycles with strictly more than 6 edges, so hexagons and smaller polygons always pair adjacent edges). Tiles with **exactly two reflex vertices** — the girih bow tie — are split at the reflex vertices into two 3-edge chains, and each chain pairs as its own closed cycle: the chain-closing pair meets across the waist, so each lobe gets a self-contained motif instead of straps straddling the concave pinch. The detection is purely geometric (no tile metadata), so it works identically through the motif cache's canonical frame.
 
+#### Crossbar join
+
+By default the two rays of a strand meet at a sharp star point. The `crossbar` parameter (0..1, "Join" slider) bevels that join: each ray is cut short at a fraction `crossbar` of the way from the star point *X* back toward its origin, and the two cut points are bridged by a short **crossbar** segment. So `crossbar=0` is the classic sharp join, `0.5` puts the bar at the midpoints of both rays, and larger values pull it out toward the tile edges. In thick mode each band variant gets its own pair of cut points, so the crossbar becomes a short ribbon. Crossbars sit interior to the weave (near the star centre) and are drawn on top rather than woven against the long straps.
+
 #### Thick mode
 
 When `thick=true`, `makeEdgeRays()` produces **two band variants** per polygon:
@@ -65,7 +69,7 @@ Segments that received gaps are returned in `underSegs` (drawn first); untouched
 
 #### Motif caching (congruent tiles)
 
-When `parquetDirection === 'none'`, θ is spatially constant and every motif quantity scales with edge length, so a tile's motif is equivariant under rotation + translation. `getHankinSegments` exploits this: each tile is mapped to a canonical frame (vertex 0 at the origin, edge 0→1 along +x), the per-tile computation (`computeTileSegments`) runs once per distinct canonical shape, and the cached segments are stamped onto every congruent tile through its own rigid transform. The cache key is the canonical vertex list quantised to 0.01 px — a near-miss only costs a redundant recompute, never a wrong reuse — and the whole cache is cleared whenever any motif parameter (θ, delta, thick, overlap, overlapGap, bandWidth, skip) changes. Reflected tiles hash to different keys, as required since the motif is chiral. Any spatially varying θ mode bypasses the cache entirely.
+When `parquetDirection === 'none'`, θ is spatially constant and every motif quantity scales with edge length, so a tile's motif is equivariant under rotation + translation. `getHankinSegments` exploits this: each tile is mapped to a canonical frame (vertex 0 at the origin, edge 0→1 along +x), the per-tile computation (`computeTileSegments`) runs once per distinct canonical shape, and the cached segments are stamped onto every congruent tile through its own rigid transform. The cache key is the canonical vertex list quantised to 0.01 px — a near-miss only costs a redundant recompute, never a wrong reuse — and the whole cache is cleared whenever any motif parameter (θ, delta, thick, overlap, overlapGap, bandWidth, skip, crossbar) changes. Reflected tiles hash to different keys, as required since the motif is chiral. Any spatially varying θ mode bypasses the cache entirely.
 
 ### 3. Parquet deformation
 
@@ -97,6 +101,7 @@ All state lives in `App`. Key controls:
 | Angle (θ) | `thetaDeg` | Ray angle in degrees (10–80°) |
 | Parquet | `parquetDirection` | Spatial θ variation mode |
 | Delta | `delta` | Along-edge offset of ray origins (0–0.9) |
+| Join | `crossbar` | Bevels each star point into a crossbar (0 = sharp, 0–0.9) |
 | Thick | `thick` | Enables double-band mode; forces `overlap=true` |
 | Width | `bandWidth` | Half-width of thick bands (0.01–0.5) |
 
