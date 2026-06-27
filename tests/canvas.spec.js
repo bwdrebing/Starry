@@ -172,6 +172,24 @@ test.describe('canvas rendering', () => {
     expect(await canvasSnapshot(page)).toMatchSnapshot('square-thick-crossbar.png')
   })
 
+  // Wide bands + a large crossbar push the crossbar end points inside
+  // neighbouring strands' ribbons; the under halves must be occluded over the
+  // whole span they lie within those ribbons, not just at boundary crossings.
+  test('hexagonal — wide thick bands, crossbar join', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 6³ — Hexagonal"]').click()
+    await waitForRender(page)
+    await openTab(page, 2) // Style tab
+    await setSlider(page, '#delta-slider', 0.15)
+    await page.locator('.prop-row').filter({ hasText: 'Band' }).getByText('Thick').click()
+    await page.waitForTimeout(80)
+    await setSlider(page, '#bandwidth-slider', 0.18)
+    await setSlider(page, '#crossbar-slider', 0.6)
+    expect(await canvasSnapshot(page)).toMatchSnapshot('hex-thick-crossbar.png')
+  })
+
   // ── Penrose 5-fold ────────────────────────────────────────────────────────
 
   test('penrose 5-fold — default state', async ({ page }) => {

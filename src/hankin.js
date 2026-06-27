@@ -199,6 +199,33 @@ function mergeIntervals(intervals) {
   return out
 }
 
+// Returns the [lo, hi] sub-interval (param in [0,1]) of segment from→to that
+// lies inside `band`'s ribbon — the strip between its two boundary segments —
+// or null if the segment never enters it. Unlike a pure boundary-crossing
+// test this handles an endpoint that starts or ends inside the ribbon (the
+// case where a crossbar point lands within another band), extending the
+// interval to that endpoint instead of missing it.
+function segmentInRibbon(from, to, band) {
+  const segs = band.segs
+  if (segs.length < 2) return null
+  // The ribbon quad: edge origins out to the two tip points and back. Clip the
+  // segment against all four sides (the long boundary lines *and* the end caps)
+  // so a segment leaving through the tip cap is detected, not just the sides.
+  const quad = [segs[0].origin, segs[0].end, segs[1].end, segs[1].origin]
+  const fromIn = pointInPolygon(from, quad)
+  const toIn   = pointInPolygon(to, quad)
+  const ts = []
+  for (let e = 0; e < 4; e++) {
+    const a = quad[e], b = quad[(e + 1) % 4]
+    for (const t of bandCrossParam(from, to, a, b))
+      if (t > -1e-4 && t < 1 + 1e-4) ts.push(Math.max(0, Math.min(1, t)))
+  }
+  if (!fromIn && !toIn && ts.length === 0) return null
+  const lo = fromIn ? 0 : (ts.length ? Math.min(...ts) : 0)
+  const hi = toIn   ? 1 : (ts.length ? Math.max(...ts) : 1)
+  return [lo, hi]
+}
+
 // Pushes all visible sub-segments of origin→end after removing the (pre-merged) gap intervals.
 function pushWithGaps(list, origin, end, gapIntervals) {
   const dx = end[0] - origin[0], dy = end[1] - origin[1]
@@ -459,24 +486,22 @@ function computeTileSegments(vertices, thetaAt, delta, thick, overlap, overlapGa
   // Crossbars bridge a strand's two band ends at the star point. Each crossbar
   // is split at its midpoint so each half takes the depth of the ray end it
   // attaches to (+ band end for the pA half, − band end for the pB half): an
-  // "over" half is drawn on top; an "under" half is gapped wherever another
-  // strand's ribbon crosses it, so it weaves under just like the ray does.
+  // "over" half is drawn on top; an "under" half is gapped over every span where
+  // it lies within another strand's ribbon — including where its own endpoint
+  // falls inside that ribbon — so it weaves under just like the ray does.
   for (let i = 0; i < n; i++) {
     const plusEndOver = endOver[2 * i], minusEndOver = endOver[2 * i + 1]
     for (const [pA, pB] of strands[i].crossbars) {
       const mid = [(pA[0] + pB[0]) / 2, (pA[1] + pB[1]) / 2]
       for (const [from, to, isOver] of [[pA, mid, plusEndOver], [mid, pB, minusEndOver]]) {
         if (isOver) { outOver.push([from, to]); continue }
-        // Under half: collect the spans where it passes behind any other strand's ribbon.
         const sl = Math.sqrt((to[0] - from[0]) ** 2 + (to[1] - from[1]) ** 2)
         const extraG = sl > 1e-8 ? (overlapGap * edgeLens[i]) / sl : 0
         const intervals = []
         for (let bj = 0; bj < bands.length; bj++) {
           if (bands[bj].strand === i) continue
-          const ts = bands[bj].segs
-            .flatMap(sb => bandCrossParam(from, to, sb.origin, sb.end))
-            .filter(t => t > 1e-6 && t < 1 - 1e-6)
-          if (ts.length) intervals.push([Math.min(...ts) - extraG, Math.max(...ts) + extraG])
+          const occ = segmentInRibbon(from, to, bands[bj])
+          if (occ) intervals.push([occ[0] - extraG, occ[1] + extraG])
         }
         if (intervals.length === 0) outOver.push([from, to])
         else pushWithGaps(outUnder, from, to, mergeIntervals(intervals))
