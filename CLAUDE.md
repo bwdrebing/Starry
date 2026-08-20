@@ -77,7 +77,38 @@ When `parquetDirection === 'none'`, θ is spatially constant and every motif qua
 
 Each edge samples θ at its **midpoint**, ensuring both tiles that share an edge use identical θ and band offsets.
 
-### 4. Rendering (`src/AntwerpCanvas.jsx`)
+### 4. Truchet arcs (`src/truchet.js`, `src/squareTruchet.js`, `src/spiral.js`)
+
+The Truchet motif (available on the triangular and square 1-uniform tilings via
+Motif → Type → Truchet) draws arcs around each tile vertex in turn: vertex A
+draws freely, B is clipped outside A's disc, C outside A's and B's, and so on,
+producing a stacked-disc occlusion illusion from stroked lines alone.
+
+**Rings vs spirals** — the Arcs control picks how consecutive control points on
+a wedge's two edges are joined:
+
+- `spiral = 0` (Rings) — point *k* joins point *k*, so each arc is a circular
+  arc of constant radius `k·lineSpacing`, drawn with `ctx.arc` and clipped
+  analytically by `clipArcOutsideDisc`.
+- `spiral = ±1` (Spiral ↻ / ↺) — point *k* joins point *k±1*, so the radius
+  ramps by one `lineSpacing` across the arc's angular span: one turn of an
+  Archimedean spiral. One fewer arc is drawn per vertex, which keeps the radial
+  envelope `[r0, r1]` unchanged.
+
+Spirals chain across tiles: every wedge is swept in the direction of increasing
+angle, and the wedges around a shared vertex tile the full 2π, so an arc leaving
+a shared edge at radius `(k+1)·lineSpacing` meets its neighbour's arc arriving
+there at the same radius. The spiral therefore continues through every tile that
+meets at the vertex instead of stopping at the tile boundary.
+
+Canvas has no spiral primitive, so `src/spiral.js` strokes spirals as polylines
+(`spiralPolylines`) sampled at ~2.5 px. Occlusion is resolved by testing samples
+and bisecting at each visibility flip: a spiralling vertex's outer boundary is
+not a disc but a ramping radius, so occluders carry their wedge (`a1`, `a2`)
+alongside their outermost ring index (`occluderRadius`). Ring mode keeps the
+original analytic path untouched, so its output is unchanged.
+
+### 5. Rendering (`src/AntwerpCanvas.jsx`)
 
 - `AntwerpCanvas` is a `forwardRef` component that owns the `<canvas>` element.
 - A `requestAnimationFrame` loop calls `drawHankin()` every frame when animated.
@@ -85,7 +116,7 @@ Each edge samples θ at its **midpoint**, ensuring both tiles that share an edge
 - Polygon colours are looked up by side-count (triangles, squares, hexagons, etc.) from `PALETTE`; quasi-periodic rhombuses are coloured by the angular-step difference between the two multigrid families that produced them.
 - **Export SVG** calls `getHankinSegments()` to collect all segment data and serialises it directly to an SVG `<path>` string.
 
-### 5. UI (`src/App.jsx`)
+### 6. UI (`src/App.jsx`)
 
 All state lives in `App`. Key controls:
 
@@ -99,6 +130,8 @@ All state lives in `App`. Key controls:
 | Delta | `delta` | Along-edge offset of ray origins (0–0.9) |
 | Thick | `thick` | Enables double-band mode; forces `overlap=true` |
 | Width | `bandWidth` | Half-width of thick bands (0.01–0.5) |
+| Type | `motifType` | Hankin motif or Truchet arcs (triangular / square tilings only) |
+| Arcs | `truchetSpiral` | Truchet arcs as rings (`0`) or spirals (`±1` for chirality) |
 
 `overlap` is always set equal to `thick` (`overlap={thick}` in JSX), so overlap rendering is inseparable from thick mode in the current UI.
 
@@ -145,6 +178,9 @@ Run `npm run test:update` once to create the baseline, then `npm test` on subseq
 | File | Purpose |
 |---|---|
 | `src/hankin.js` | All motif geometry: ray construction, intersection, thick bands, painters algorithm |
+| `src/truchet.js` | Triangular Truchet tiling, arc drawing and tile editing |
+| `src/squareTruchet.js` | Square Truchet tiling, arc drawing and tile editing |
+| `src/spiral.js` | Spiral Truchet arcs: polyline sampling and spiral-boundary occlusion |
 | `src/penrose.js` | Quasi-periodic tiling via de Bruijn multigrid |
 | `src/girih.js` | Periodic girih tilings (decagon / hexagon / bow tie) |
 | `src/AntwerpCanvas.jsx` | Canvas component, rAF loop, Antwerp tiling, SVG export |
