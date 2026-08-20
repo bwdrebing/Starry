@@ -23,12 +23,21 @@ const REFINE    = 12    // bisection iterations used to place a clip boundary
 const TAU = 2 * Math.PI
 
 // Ring indices whose arcs are drawn for a [r0, r1] range.
-// Rings (spiral 0) draw one arc per index.  A spiral consumes two consecutive
-// indices per arc, so one fewer arc is drawn and the radial envelope [r0, r1]
-// is unchanged: +1 ramps k → k+1, −1 ramps k → k−1.
+//
+// Rings (spiral 0) draw one arc per index.  A spiral arc spans two consecutive
+// indices, and the range is shifted one step inward so that the same number of
+// arcs is drawn: every control point in [r0, r1] is still an arc endpoint, and
+// the innermost arc runs between index r0−1 and r0.  At the default r0 = 1 that
+// innermost arc starts at index 0 — the tile vertex itself — so the spiral winds
+// into its own centre instead of beginning in mid-air one lineSpacing out with
+// nothing joining it.  The outer end stays at r1 either way.
 export function spiralArcStarts(r0, r1, spiral) {
-  const lo = spiral < 0 ? r0 + 1 : r0
-  const hi = spiral > 0 ? r1 - 1 : r1
+  // +1 ramps k → k+1, so an arc reaching r0 starts at r0−1;
+  // −1 ramps k → k−1, so an arc reaching r0 starts at r0 itself.
+  let lo = spiral > 0 ? r0 - 1 : r0
+  let hi = spiral > 0 ? r1 - 1 : r1
+  if (lo < 0) lo = 0                       // never start behind the vertex
+  if (spiral < 0 && lo < 1) lo = 1         // nor end behind it
   const out = []
   for (let k = lo; k <= hi; k++) out.push(k)
   return out

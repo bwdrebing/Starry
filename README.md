@@ -6,7 +6,7 @@ A browser-based Islamic geometric pattern generator. Renders quasi-periodic and 
 
 - **60+ tiling patterns** — 1-Uniform through 3-Uniform (triangular, square, hexagonal, mixed), plus quasi-periodic (Penrose P3, heptagonal, Ammann-Beenker) and Truchet variants
 - **Hankin motif** — configurable ray angle (10–80°), edge offset (delta), thick double-band mode with woven overlap rendering
-- **Truchet spirals** — A tile's arcs normally join control point *k* on one edge of a vertex's wedge to point *k* on the other, closing into concentric rings. Spiral mode joins *k* to *k±1* instead, so the radius ramps by one line spacing across each arc. Every wedge is swept in the same angular direction, so an arc leaving a shared edge meets its neighbour's arc arriving at the same radius: the turns chain through all tiles around a vertex into one continuous spiral.
+- **Truchet spirals** — A tile's arcs normally join control point *k* on one edge of a vertex's wedge to point *k* on the other, closing into concentric rings. Spiral mode joins *k* to *k±1* instead, so the radius ramps by one line spacing across each arc. Every wedge is swept in the same angular direction, so an arc leaving a shared edge meets its neighbour's arc arriving at the same radius: the turns chain through all tiles around a vertex into one continuous spiral. The innermost arc runs from the tile vertex itself (control point 0) out to point 1, so the spiral winds into its own centre rather than starting in mid-air.
 
 **Parquet deformation** — spatially vary the ray angle across the canvas: uniform, linear gradient, radial gradient, or animated (wave, ripple, pulse)
 - **Interactive canvas** — pan, pinch/zoom, handle dragging; Truchet mode adds keyboard tile editing

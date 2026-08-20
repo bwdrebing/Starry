@@ -92,8 +92,11 @@ a wedge's two edges are joined:
   analytically by `clipArcOutsideDisc`.
 - `spiral = ±1` (Spiral ↻ / ↺) — point *k* joins point *k±1*, so the radius
   ramps by one `lineSpacing` across the arc's angular span: one turn of an
-  Archimedean spiral. One fewer arc is drawn per vertex, which keeps the radial
-  envelope `[r0, r1]` unchanged.
+  Archimedean spiral. The index range is shifted one step inward
+  (`spiralArcStarts`) so the arc count matches rings: the innermost arc runs
+  between index `r0−1` and `r0`, which at the default `r0 = 1` starts at index 0
+  — the tile vertex itself. Without it the innermost turn would begin in mid-air
+  one `lineSpacing` out with nothing joining it. The outer end stays at `r1`.
 
 Spirals chain across tiles: every wedge is swept in the direction of increasing
 angle, and the wedges around a shared vertex tile the full 2π, so an arc leaving
