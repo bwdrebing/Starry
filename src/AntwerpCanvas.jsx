@@ -63,7 +63,7 @@ function pointInPoly(px, py, pts) {
   return inside
 }
 
-const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null, skip = 0 }, ref) {
+const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSize = 48, mode = 'tiling', theta = Math.PI / 4, delta = 0, debug = false, thick = false, overlap = false, overlapGap = 0.05, bandWidth = 0.2, showMotif = true, parquetDirection = 'none', thetaMin = Math.PI / 4, thetaMax = Math.PI / 4, radius = 1, parquetFunction = 'wave-ltr', animSpeed = 1, onTileClick = null, selectedTileIdx = -1, linearAngle = 0, centerX = 0, centerY = 0, ellipseAngle = 0, ellipseMajorScale = 1, ellipseMinorScale = 1, onParquetParamChange = null, skip = 0, truchetSpiral = 0 }, ref) {
   const canvasRef = useRef(null)
   const allShapesRef = useRef([])
   const shapesRef = useRef([])
@@ -92,6 +92,7 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
   const ellipseMinorScaleRef = useRef(ellipseMinorScale)
   const onParquetParamChangeRef = useRef(onParquetParamChange)
   const skipRef = useRef(skip)
+  const truchetSpiralRef = useRef(truchetSpiral)
   const boundsRef = useRef({ minX: -200, maxX: 200, minY: -200, maxY: 200, maxR: 200 })
   const isTruchetRef        = useRef(false)
   const selectedTileIdxRef  = useRef(-1)
@@ -177,10 +178,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       if (showMotifRef.current) {
         ctx.strokeStyle = 'rgba(255,255,255,0.85)'
         ctx.lineWidth = 1.5 / scale
+        const spiral = truchetSpiralRef.current
         if (shapesRef.current[0]?.[1]?.squareTruchet) {
-          drawSquareTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
+          drawSquareTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current, spiral)
         } else {
-          drawTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current)
+          drawTruchetShapes(ctx, shapesRef.current, selectedTileIdxRef.current, spiral)
         }
       }
     } else if (currentMode === 'tiling') {
@@ -334,9 +336,10 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
     ellipseMinorScaleRef.current = ellipseMinorScale
     onParquetParamChangeRef.current = onParquetParamChange
     skipRef.current = skip
+    truchetSpiralRef.current = truchetSpiral
     applyRadius()
     draw()
-  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, skip, applyRadius, draw])
+  }, [mode, theta, delta, debug, thick, overlap, overlapGap, bandWidth, showMotif, parquetDirection, thetaMin, thetaMax, radius, parquetFunction, animSpeed, linearAngle, centerX, centerY, ellipseAngle, ellipseMajorScale, ellipseMinorScale, onParquetParamChange, skip, truchetSpiral, applyRadius, draw])
 
   // Animation loop for time-based function mode
   useEffect(() => {
@@ -642,11 +645,11 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
       let motifContent = ''
       const firstMetaSVG = shapes[0]?.[1]
       if (firstMetaSVG?.squareTruchet) {
-        const arcPaths = getSquareTruchetPaths(shapes)
+        const arcPaths = getSquareTruchetPaths(shapes, truchetSpiralRef.current)
         const pathEls  = arcPaths.map(d => `    <path d="${d}"/>`).join('\n')
         motifContent = `\n${pathEls}`
       } else if (firstMetaSVG?.truchet) {
-        const arcPaths = getTruchetPaths(shapes)
+        const arcPaths = getTruchetPaths(shapes, truchetSpiralRef.current)
         const pathEls  = arcPaths.map(d => `    <path d="${d}"/>`).join('\n')
         motifContent = `\n${pathEls}`
       } else if (showMotifRef.current) {

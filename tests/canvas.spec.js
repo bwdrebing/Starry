@@ -45,6 +45,31 @@ async function openTab(page, idx) {
   }
 }
 
+// Count lit canvas pixels and hash their positions — used where the tiling is
+// randomly generated, so a pixel-exact baseline isn't possible.
+async function canvasInk(page) {
+  return page.locator(CANVAS).evaluate(el => {
+    const o = document.createElement('canvas')
+    o.width = el.width; o.height = el.height
+    const ctx = o.getContext('2d')
+    ctx.drawImage(el, 0, 0)
+    const d = ctx.getImageData(0, 0, o.width, o.height).data
+    let count = 0, hash = 0
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 128) { count++; hash = (hash * 31 + i) | 0 }
+    }
+    return { count, hash }
+  })
+}
+
+// Switch the motif type to Truchet and select an arc mode from the Motif tab.
+async function truchetArcs(page, label) {
+  await page.locator('.seg-ctrl button', { hasText: /^Truchet$/ }).click()
+  await page.waitForTimeout(120)
+  await page.locator('.prop-row').filter({ hasText: 'Arcs' }).getByText(label, { exact: true }).click()
+  await page.waitForTimeout(200)
+}
+
 test.describe('canvas rendering', () => {
   // ── Default tiling (index 0) ──────────────────────────────────────────────
 
@@ -185,5 +210,65 @@ test.describe('canvas rendering', () => {
     await page.locator('.prop-row').filter({ hasText: 'Density' }).getByText('2', { exact: true }).click()
     await page.waitForTimeout(80)
     expect(await canvasSnapshot(page)).toMatchSnapshot('girih-db-theta-36-density-2.png')
+  })
+})
+
+// ── Truchet arcs: rings vs spirals ──────────────────────────────────────────
+//
+// Truchet tilings are randomly generated per page load, so these compare rings
+// against spirals within one page rather than against a committed baseline.
+test.describe('truchet spirals', () => {
+  test('triangular truchet — spiral redraws the arcs', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+
+    await truchetArcs(page, 'Rings')
+    const rings = await canvasInk(page)
+    expect(rings.count).toBeGreaterThan(0)
+
+    await page.locator('.prop-row').filter({ hasText: 'Arcs' }).getByText('Spiral ↻', { exact: true }).click()
+    await page.waitForTimeout(200)
+    const spiral = await canvasInk(page)
+
+    // Same tiling, different curves: one fewer arc per vertex, comparable ink.
+    expect(spiral.hash).not.toBe(rings.hash)
+    expect(spiral.count).toBeGreaterThan(rings.count * 0.5)
+    expect(spiral.count).toBeLessThan(rings.count * 1.5)
+  })
+
+  test('triangular truchet — both spiral chiralities draw', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+
+    await truchetArcs(page, 'Spiral ↻')
+    const cw = await canvasInk(page)
+    await page.locator('.prop-row').filter({ hasText: 'Arcs' }).getByText('Spiral ↺', { exact: true }).click()
+    await page.waitForTimeout(200)
+    const ccw = await canvasInk(page)
+
+    expect(cw.count).toBeGreaterThan(0)
+    expect(ccw.count).toBeGreaterThan(0)
+    expect(ccw.hash).not.toBe(cw.hash)
+  })
+
+  test('square truchet — spiral redraws the arcs', async ({ page }) => {
+    await page.goto('/')
+    await waitForRender(page)
+    await openTab(page, 0) // Tiling tab
+    await page.locator('.tiling-thumb-item[title="1-Uniform: 4⁴ — Square"]').click()
+    await waitForRender(page)
+    await openTab(page, 1) // Motif tab
+
+    await truchetArcs(page, 'Rings')
+    const rings = await canvasInk(page)
+    expect(rings.count).toBeGreaterThan(0)
+
+    await page.locator('.prop-row').filter({ hasText: 'Arcs' }).getByText('Spiral ↻', { exact: true }).click()
+    await page.waitForTimeout(200)
+    const spiral = await canvasInk(page)
+
+    expect(spiral.hash).not.toBe(rings.hash)
+    expect(spiral.count).toBeGreaterThan(rings.count * 0.5)
+    expect(spiral.count).toBeLessThan(rings.count * 1.5)
   })
 })

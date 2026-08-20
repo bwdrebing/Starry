@@ -7,6 +7,8 @@
 // B's discs, and D clipped outside all three discs, building a layered
 // stacked-disc occlusion illusion from stroked lines alone.
 
+import { spiralArcStarts, strokeSpiralArc, spiralArcPaths } from './spiral'
+
 // Arc angle ranges [startAngle, endAngle] for each corner index.
 // Vertex order: v0=TL, v1=TR, v2=BR, v3=BL.
 // Angles are clockwise from +x (canvas Y-down: 0°=right, 90°=down).
@@ -244,7 +246,7 @@ function arcToSVGPath(cx, cy, r, a1, a2) {
   return `M${f(x1)},${f(y1)} A${f(r)},${f(r)},0,${largeArc},1,${f(x2)},${f(y2)}`
 }
 
-export function getSquareTruchetPaths(shapes) {
+export function getSquareTruchetPaths(shapes, spiral = 0) {
   const paths = []
   for (const [pts, meta] of shapes) {
     if (!meta?.squareTruchet) continue
@@ -261,57 +263,79 @@ export function getSquareTruchetPaths(shapes) {
     const vB = pts[(startPt + 1) % 4]
     const vC = pts[(startPt + 2) % 4]
 
+    const angA = ARC_ANGLES[(startPt + 0) % 4]
+    const angB = ARC_ANGLES[(startPt + 1) % 4]
+    const angC = ARC_ANGLES[(startPt + 2) % 4]
+
     const discR_A = suppressA ? 0 : rA1 * lineSpacing
     const discR_B = suppressB ? 0 : rB1 * lineSpacing
     const discR_C = suppressC ? 0 : rC1 * lineSpacing
+
+    const occA = discR_A > 1e-6 ? { center: vA, a1: angA[0], a2: angA[1], rMax: rA1 } : null
+    const occB = discR_B > 1e-6 ? { center: vB, a1: angB[0], a2: angB[1], rMax: rB1 } : null
+    const occC = discR_C > 1e-6 ? { center: vC, a1: angC[0], a2: angC[1], rMax: rC1 } : null
 
     const dEdge = Math.hypot(vB[0] - vA[0], vB[1] - vA[1])
 
     // ── Vertex A ─────────────────────────────────────────────────────────────
     if (!suppressA) {
-      const vi       = (startPt + 0) % 4
       const [vx, vy] = vA
-      const [a1, a2] = ARC_ANGLES[vi]
-      for (let k = rA0; k <= rA1; k++)
-        paths.push(arcToSVGPath(vx, vy, k * lineSpacing, a1, a2))
+      const [a1, a2] = angA
+      if (spiral) {
+        for (const k of spiralArcStarts(rA0, rA1, spiral))
+          paths.push(...spiralArcPaths(vA, a1, a2, k, spiral, lineSpacing))
+      } else {
+        for (let k = rA0; k <= rA1; k++)
+          paths.push(arcToSVGPath(vx, vy, k * lineSpacing, a1, a2))
+      }
     }
 
     // ── Vertex B: clipped outside A's disc ───────────────────────────────────
     if (!suppressB) {
-      const vi       = (startPt + 1) % 4
       const [vx, vy] = vB
-      const [a1, a2] = ARC_ANGLES[vi]
-      const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
-      for (let k = rB0; k <= rB1; k++) {
-        const r = k * lineSpacing
-        if (doClip) {
-          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
-          if (!clipped) continue
-          const [da1, da2] = clipped
-          if (da2 - da1 < 1e-6) continue
-          paths.push(arcToSVGPath(vx, vy, r, da1, da2))
-        } else {
-          paths.push(arcToSVGPath(vx, vy, r, a1, a2))
+      const [a1, a2] = angB
+      if (spiral) {
+        const occ = occA ? [occA] : []
+        for (const k of spiralArcStarts(rB0, rB1, spiral))
+          paths.push(...spiralArcPaths(vB, a1, a2, k, spiral, lineSpacing, occ))
+      } else {
+        const doClip = discR_A > 1e-6 && discR_A < dEdge - 1e-6
+        for (let k = rB0; k <= rB1; k++) {
+          const r = k * lineSpacing
+          if (doClip) {
+            const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
+            if (!clipped) continue
+            const [da1, da2] = clipped
+            if (da2 - da1 < 1e-6) continue
+            paths.push(arcToSVGPath(vx, vy, r, da1, da2))
+          } else {
+            paths.push(arcToSVGPath(vx, vy, r, a1, a2))
+          }
         }
       }
     }
 
     // ── Vertex C: clipped outside A's and B's discs ───────────────────────────
     if (!suppressC) {
-      const vi       = (startPt + 2) % 4
       const [vx, vy] = vC
-      const [a1, a2] = ARC_ANGLES[vi]
-      const doClipA  = discR_A > 1e-6
-      const doClipB  = discR_B > 1e-6
-      for (let k = rC0; k <= rC1; k++) {
-        const r    = k * lineSpacing
-        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
-        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
-        if (!segA || !segB) continue
-        const lo = Math.max(segA[0], segB[0])
-        const hi = Math.min(segA[1], segB[1])
-        if (hi - lo < 1e-6) continue
-        paths.push(arcToSVGPath(vx, vy, r, lo, hi))
+      const [a1, a2] = angC
+      if (spiral) {
+        const occ = [occA, occB].filter(Boolean)
+        for (const k of spiralArcStarts(rC0, rC1, spiral))
+          paths.push(...spiralArcPaths(vC, a1, a2, k, spiral, lineSpacing, occ))
+      } else {
+        const doClipA = discR_A > 1e-6
+        const doClipB = discR_B > 1e-6
+        for (let k = rC0; k <= rC1; k++) {
+          const r    = k * lineSpacing
+          const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+          const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+          if (!segA || !segB) continue
+          const lo = Math.max(segA[0], segB[0])
+          const hi = Math.min(segA[1], segB[1])
+          if (hi - lo < 1e-6) continue
+          paths.push(arcToSVGPath(vx, vy, r, lo, hi))
+        }
       }
     }
 
@@ -320,19 +344,25 @@ export function getSquareTruchetPaths(shapes) {
       const vi       = (startPt + 3) % 4
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[vi]
-      const doClipA  = discR_A > 1e-6
-      const doClipB  = discR_B > 1e-6
-      const doClipC  = discR_C > 1e-6
-      for (let k = rD0; k <= rD1; k++) {
-        const r    = k * lineSpacing
-        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
-        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
-        const segC = doClipC ? clipArcOutsideDisc([vx, vy], r, a1, a2, vC, discR_C) : [a1, a2]
-        if (!segA || !segB || !segC) continue
-        const lo = Math.max(segA[0], segB[0], segC[0])
-        const hi = Math.min(segA[1], segB[1], segC[1])
-        if (hi - lo < 1e-6) continue
-        paths.push(arcToSVGPath(vx, vy, r, lo, hi))
+      if (spiral) {
+        const occ = [occA, occB, occC].filter(Boolean)
+        for (const k of spiralArcStarts(rD0, rD1, spiral))
+          paths.push(...spiralArcPaths(pts[vi], a1, a2, k, spiral, lineSpacing, occ))
+      } else {
+        const doClipA = discR_A > 1e-6
+        const doClipB = discR_B > 1e-6
+        const doClipC = discR_C > 1e-6
+        for (let k = rD0; k <= rD1; k++) {
+          const r    = k * lineSpacing
+          const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+          const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+          const segC = doClipC ? clipArcOutsideDisc([vx, vy], r, a1, a2, vC, discR_C) : [a1, a2]
+          if (!segA || !segB || !segC) continue
+          const lo = Math.max(segA[0], segB[0], segC[0])
+          const hi = Math.min(segA[1], segB[1], segC[1])
+          if (hi - lo < 1e-6) continue
+          paths.push(arcToSVGPath(vx, vy, r, lo, hi))
+        }
       }
     }
   }
@@ -350,7 +380,7 @@ export const SQUARE_VERTEX_COLORS = [
   'rgba( 80, 220, 120, 0.95)',   // D — green
 ]
 
-export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1) {
+export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1, spiral = 0) {
   const baseStyle = ctx.strokeStyle
   for (const [pts, meta] of shapes) {
     if (!meta?.squareTruchet) continue
@@ -369,9 +399,19 @@ export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1) {
     const vB = pts[(startPt + 1) % 4]
     const vC = pts[(startPt + 2) % 4]
 
+    const angA = ARC_ANGLES[(startPt + 0) % 4]
+    const angB = ARC_ANGLES[(startPt + 1) % 4]
+    const angC = ARC_ANGLES[(startPt + 2) % 4]
+
     const discR_A = suppressA ? 0 : rA1 * lineSpacing
     const discR_B = suppressB ? 0 : rB1 * lineSpacing
     const discR_C = suppressC ? 0 : rC1 * lineSpacing
+
+    // Spiral occluders carry the wedge as well as the radius: the outer boundary
+    // of a spiralling vertex ramps across its wedge instead of being a disc.
+    const occA = discR_A > 1e-6 ? { center: vA, a1: angA[0], a2: angA[1], rMax: rA1 } : null
+    const occB = discR_B > 1e-6 ? { center: vB, a1: angB[0], a2: angB[1], rMax: rB1 } : null
+    const occC = discR_C > 1e-6 ? { center: vC, a1: angC[0], a2: angC[1], rMax: rC1 } : null
 
     ctx.lineCap = 'round'
 
@@ -380,37 +420,46 @@ export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1) {
     // ── Vertex A: full arcs ──────────────────────────────────────────────────
     if (!suppressA) {
       ctx.strokeStyle = isSelected ? SQUARE_VERTEX_COLORS[0] : baseStyle
-      const vi       = (startPt + 0) % 4
       const [vx, vy] = vA
-      const [a1, a2] = ARC_ANGLES[vi]
-      for (let k = rA0; k <= rA1; k++) {
-        ctx.beginPath()
-        ctx.arc(vx, vy, k * lineSpacing, a1, a2)
-        ctx.stroke()
+      const [a1, a2] = angA
+      if (spiral) {
+        for (const k of spiralArcStarts(rA0, rA1, spiral))
+          strokeSpiralArc(ctx, vA, a1, a2, k, spiral, lineSpacing)
+      } else {
+        for (let k = rA0; k <= rA1; k++) {
+          ctx.beginPath()
+          ctx.arc(vx, vy, k * lineSpacing, a1, a2)
+          ctx.stroke()
+        }
       }
     }
 
     // ── Vertex B: clipped outside A's disc ──────────────────────────────────
     if (!suppressB) {
       ctx.strokeStyle = isSelected ? SQUARE_VERTEX_COLORS[1] : baseStyle
-      const vi       = (startPt + 1) % 4
       const [vx, vy] = vB
-      const [a1, a2] = ARC_ANGLES[vi]
-      const doClip   = discR_A > 1e-6 && discR_A < dEdge - 1e-6
-      for (let k = rB0; k <= rB1; k++) {
-        const r = k * lineSpacing
-        if (doClip) {
-          const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
-          if (!clipped) continue
-          const [da1, da2] = clipped
-          if (da2 - da1 < 1e-6) continue
-          ctx.beginPath()
-          ctx.arc(vx, vy, r, da1, da2)
-          ctx.stroke()
-        } else {
-          ctx.beginPath()
-          ctx.arc(vx, vy, r, a1, a2)
-          ctx.stroke()
+      const [a1, a2] = angB
+      if (spiral) {
+        const occ = occA ? [occA] : []
+        for (const k of spiralArcStarts(rB0, rB1, spiral))
+          strokeSpiralArc(ctx, vB, a1, a2, k, spiral, lineSpacing, occ)
+      } else {
+        const doClip = discR_A > 1e-6 && discR_A < dEdge - 1e-6
+        for (let k = rB0; k <= rB1; k++) {
+          const r = k * lineSpacing
+          if (doClip) {
+            const clipped = clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A)
+            if (!clipped) continue
+            const [da1, da2] = clipped
+            if (da2 - da1 < 1e-6) continue
+            ctx.beginPath()
+            ctx.arc(vx, vy, r, da1, da2)
+            ctx.stroke()
+          } else {
+            ctx.beginPath()
+            ctx.arc(vx, vy, r, a1, a2)
+            ctx.stroke()
+          }
         }
       }
     }
@@ -418,22 +467,27 @@ export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1) {
     // ── Vertex C: clipped outside A's and B's discs ──────────────────────────
     if (!suppressC) {
       ctx.strokeStyle = isSelected ? SQUARE_VERTEX_COLORS[2] : baseStyle
-      const vi       = (startPt + 2) % 4
       const [vx, vy] = vC
-      const [a1, a2] = ARC_ANGLES[vi]
-      const doClipA  = discR_A > 1e-6
-      const doClipB  = discR_B > 1e-6
-      for (let k = rC0; k <= rC1; k++) {
-        const r    = k * lineSpacing
-        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
-        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
-        if (!segA || !segB) continue
-        const lo = Math.max(segA[0], segB[0])
-        const hi = Math.min(segA[1], segB[1])
-        if (hi - lo < 1e-6) continue
-        ctx.beginPath()
-        ctx.arc(vx, vy, r, lo, hi)
-        ctx.stroke()
+      const [a1, a2] = angC
+      if (spiral) {
+        const occ = [occA, occB].filter(Boolean)
+        for (const k of spiralArcStarts(rC0, rC1, spiral))
+          strokeSpiralArc(ctx, vC, a1, a2, k, spiral, lineSpacing, occ)
+      } else {
+        const doClipA = discR_A > 1e-6
+        const doClipB = discR_B > 1e-6
+        for (let k = rC0; k <= rC1; k++) {
+          const r    = k * lineSpacing
+          const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+          const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+          if (!segA || !segB) continue
+          const lo = Math.max(segA[0], segB[0])
+          const hi = Math.min(segA[1], segB[1])
+          if (hi - lo < 1e-6) continue
+          ctx.beginPath()
+          ctx.arc(vx, vy, r, lo, hi)
+          ctx.stroke()
+        }
       }
     }
 
@@ -443,21 +497,27 @@ export function drawSquareTruchetShapes(ctx, shapes, selectedIdx = -1) {
       const vi       = (startPt + 3) % 4
       const [vx, vy] = pts[vi]
       const [a1, a2] = ARC_ANGLES[vi]
-      const doClipA  = discR_A > 1e-6
-      const doClipB  = discR_B > 1e-6
-      const doClipC  = discR_C > 1e-6
-      for (let k = rD0; k <= rD1; k++) {
-        const r    = k * lineSpacing
-        const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
-        const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
-        const segC = doClipC ? clipArcOutsideDisc([vx, vy], r, a1, a2, vC, discR_C) : [a1, a2]
-        if (!segA || !segB || !segC) continue
-        const lo = Math.max(segA[0], segB[0], segC[0])
-        const hi = Math.min(segA[1], segB[1], segC[1])
-        if (hi - lo < 1e-6) continue
-        ctx.beginPath()
-        ctx.arc(vx, vy, r, lo, hi)
-        ctx.stroke()
+      if (spiral) {
+        const occ = [occA, occB, occC].filter(Boolean)
+        for (const k of spiralArcStarts(rD0, rD1, spiral))
+          strokeSpiralArc(ctx, pts[vi], a1, a2, k, spiral, lineSpacing, occ)
+      } else {
+        const doClipA = discR_A > 1e-6
+        const doClipB = discR_B > 1e-6
+        const doClipC = discR_C > 1e-6
+        for (let k = rD0; k <= rD1; k++) {
+          const r    = k * lineSpacing
+          const segA = doClipA ? clipArcOutsideDisc([vx, vy], r, a1, a2, vA, discR_A) : [a1, a2]
+          const segB = doClipB ? clipArcOutsideDisc([vx, vy], r, a1, a2, vB, discR_B) : [a1, a2]
+          const segC = doClipC ? clipArcOutsideDisc([vx, vy], r, a1, a2, vC, discR_C) : [a1, a2]
+          if (!segA || !segB || !segC) continue
+          const lo = Math.max(segA[0], segB[0], segC[0])
+          const hi = Math.min(segA[1], segB[1], segC[1])
+          if (hi - lo < 1e-6) continue
+          ctx.beginPath()
+          ctx.arc(vx, vy, r, lo, hi)
+          ctx.stroke()
+        }
       }
     }
 

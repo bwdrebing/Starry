@@ -98,6 +98,7 @@ export default function App() {
   const [thick, setThick] = useState(false)
   const [bandWidth, setBandWidth] = useState(0.2)
   const [skip, setSkip] = useState(0)
+  const [truchetSpiral, setTruchetSpiral] = useState(0)  // 0 = rings, ±1 = spiral chirality
   const [activeTab, setActiveTab] = useState('motif')
   const [tilingScrolled, setTilingScrolled] = useState(false)
   const [selectedTileIdx, setSelectedTileIdx] = useState(-1)
@@ -254,6 +255,7 @@ export default function App() {
           ellipseMajorScale={ellipseMajorScale}
           ellipseMinorScale={ellipseMinorScale}
           skip={skip}
+          truchetSpiral={truchetSpiral}
           onParquetParamChange={updates => {
             if (updates.linearAngle !== undefined) setLinearAngle(updates.linearAngle)
             if (updates.centerX !== undefined) setParquetCenterX(updates.centerX)
@@ -336,6 +338,28 @@ export default function App() {
                         <button className={motifType === 'truchet' ? 'active' : ''}
                           onClick={() => { setMotifType('truchet'); setSelectedTileIdx(-1); setSelectedTileMeta(null) }}>
                           Truchet
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {isAnyTruchet && (
+                  <div className="prop-row">
+                    <span className="prop-label">Arcs</span>
+                    <div className="prop-control">
+                      <div className="seg-ctrl">
+                        <button className={truchetSpiral === 0 ? 'active' : ''}
+                          onClick={() => setTruchetSpiral(0)} title="Concentric rings">
+                          Rings
+                        </button>
+                        <button className={truchetSpiral === 1 ? 'active' : ''}
+                          onClick={() => setTruchetSpiral(1)} title="Spiral outward along each arc">
+                          Spiral ↻
+                        </button>
+                        <button className={truchetSpiral === -1 ? 'active' : ''}
+                          onClick={() => setTruchetSpiral(-1)} title="Spiral inward along each arc">
+                          Spiral ↺
                         </button>
                       </div>
                     </div>
