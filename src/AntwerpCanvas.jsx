@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react'
 import toShapes from '@hhogg/antwerp/lib/cjs/toShapes'
 import { drawHankin, getHankinSegments } from './hankin'
+import { optimiseForPlotter } from './plotterUtils'
 import { generateMultigrid } from './penrose'
 import { generateGirih } from './girih'
 import { generateTruchetTiling, drawTruchetShapes, getTruchetPaths, VERTEX_COLORS,
@@ -664,8 +665,8 @@ const AntwerpCanvas = forwardRef(function AntwerpCanvas({ configuration, shapeSi
           ellipseAngleRef.current, ellipseMajorScaleRef.current, ellipseMinorScaleRef.current,
           skipRef.current
         )
-        const underPaths = underSegs.map(s => `    <path d="${segPath(s)}"/>`).join('\n')
-        const overPaths  = overSegs.map(s  => `    <path d="${segPath(s)}"/>`).join('\n')
+        const underPaths = optimiseForPlotter(underSegs).map(d => `    <path d="${d}"/>`).join('\n')
+        const overPaths  = optimiseForPlotter(overSegs).map(d  => `    <path d="${d}"/>`).join('\n')
         motifContent = `
   <g id="under">
 ${underPaths}
